@@ -40,7 +40,7 @@ class MovieUpdatedPushNotifier(
             val messageId = firebaseMessaging.send(message)
             log.info("FCM sent for movie {} to topic '{}' (id {})", event.movieId, topic, messageId)
         } catch (e: Exception) {
-            log.error("FCM send failed for movie {}: {}", event.movieId, e.message)
+            log.error("FCM send failed for movie {}", event.movieId, e)
         }
     }
 }

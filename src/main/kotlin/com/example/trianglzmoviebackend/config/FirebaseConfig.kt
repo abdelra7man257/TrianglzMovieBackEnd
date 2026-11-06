@@ -1,5 +1,6 @@
 package com.example.trianglzmoviebackend.config
 
+import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.auth.oauth2.GoogleCredentials
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -17,7 +18,12 @@ class FirebaseConfig {
     @ConditionalOnExpression("!'\${app.firebase.credentials-path:}'.isBlank()")
     fun firebaseMessaging(properties: AppProperties): FirebaseMessaging {
         val credentials = FileInputStream(properties.firebase.credentialsPath).use(GoogleCredentials::fromStream)
-        val options = FirebaseOptions.builder().setCredentials(credentials).build()
+        // The plain JDK transport avoids the Apache HttpClient that Spring's dependency management upgrades,
+        // which makes the Firebase SDK decompress FCM responses twice ("Not in GZIP format").
+        val options = FirebaseOptions.builder()
+            .setCredentials(credentials)
+            .setHttpTransport(NetHttpTransport())
+            .build()
         val app = FirebaseApp.getApps().firstOrNull() ?: FirebaseApp.initializeApp(options)
         return FirebaseMessaging.getInstance(app)
     }
