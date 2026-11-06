@@ -39,3 +39,9 @@ out/
 ### Kotlin ###
 .kotlin
 /.claude/
+
+### Secrets & local data ###
+.env
+secrets/
+google-services.json
+data/

@@ -1,1 +1,39 @@
-services: { }
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: movies
+      POSTGRES_USER: ${DB_USERNAME:-movies}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-movies}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-movies} -d movies"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/movies
+      DB_USERNAME: ${DB_USERNAME:-movies}
+      DB_PASSWORD: ${DB_PASSWORD:-movies}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TMDB_SYNC_PAGES: ${TMDB_SYNC_PAGES:-10}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+      FCM_TOPIC: ${FCM_TOPIC:-movie-updates}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    volumes:
+      - ./secrets:/secrets:ro
+
+volumes:
+  pgdata:

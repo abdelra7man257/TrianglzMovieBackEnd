@@ -1,0 +1,9 @@
+# Run without Docker: ./gradlew bootRun --args='--spring.profiles.active=local'
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/movies;AUTO_SERVER=TRUE
+    username: sa
+    password: ""
+  h2:
+    console:
+      enabled: false
