@@ -1,0 +1,82 @@
+package com.example.trianglzmoviebackend.movie
+
+import com.example.trianglzmoviebackend.common.PagedResponse
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.Pageable
+import java.util.Optional
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class MovieServiceTest {
+    private val repository = mockk<MovieRepository>()
+    private val service = MovieService(repository)
+
+    private fun movie(id: Long = 1, title: String = "Fight Club") = Movie(id = id, title = title)
+
+    @Test
+    fun `list clamps page and size and sorts by popularity then id`() {
+        val pageable = slot<Pageable>()
+        every { repository.findAll(capture(pageable)) } returns PageImpl(listOf(movie()))
+
+        val result = service.list(page = -3, size = 500)
+
+        assertEquals(1, result.page)
+        assertEquals(0, pageable.captured.pageNumber)
+        assertEquals(MovieService.MAX_SIZE, pageable.captured.pageSize)
+        val sort = pageable.captured.sort
+        assertTrue(sort.getOrderFor("popularity")!!.isDescending)
+        assertTrue(sort.getOrderFor("id")!!.isAscending)
+    }
+
+    @Test
+    fun `list enforces minimum size`() {
+        val pageable = slot<Pageable>()
+        every { repository.findAll(capture(pageable)) } returns Page.empty()
+
+        service.list(page = 1, size = 0)
+
+        assertEquals(MovieService.MIN_SIZE, pageable.captured.pageSize)
+    }
+
+    @Test
+    fun `blank search returns empty page without hitting the repository`() {
+        val result = service.search("   ", 2, 20)
+
+        assertEquals(2, result.page)
+        assertTrue(result.results.isEmpty())
+        assertEquals(0, result.totalResults)
+        verify(exactly = 0) { repository.findByTitleContainingIgnoreCase(any(), any()) }
+    }
+
+    @Test
+    fun `search trims the query`() {
+        every { repository.findByTitleContainingIgnoreCase("lion", any()) } returns PageImpl(listOf(movie(title = "The Lion King")))
+
+        val result = service.search("  lion ", 1, 20)
+
+        assertEquals("The Lion King", result.results.single().title)
+    }
+
+    @Test
+    fun `get throws when movie is missing`() {
+        every { repository.findById(999) } returns Optional.empty()
+
+        assertThrows<MovieNotFoundException> { service.get(999) }
+    }
+
+    @Test
+    fun `get maps entity to dto`() {
+        every { repository.findById(1) } returns Optional.of(movie().apply { genres = mutableListOf("Drama") })
+
+        val dto = service.get(1)
+
+        assertEquals(listOf("Drama"), dto.genres)
+    }
+}
