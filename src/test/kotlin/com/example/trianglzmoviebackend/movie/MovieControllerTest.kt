@@ -2,6 +2,9 @@ package com.example.trianglzmoviebackend.movie
 
 import com.example.trianglzmoviebackend.common.PagedResponse
 import com.example.trianglzmoviebackend.common.GlobalExceptionHandler
+import com.example.trianglzmoviebackend.config.ApiAuthenticationEntryPoint
+import com.example.trianglzmoviebackend.config.AppProperties
+import com.example.trianglzmoviebackend.config.SecurityConfig
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
@@ -10,7 +13,10 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -18,7 +24,12 @@ import java.time.Instant
 import java.time.LocalDate
 
 @WebMvcTest(MovieController::class)
-@Import(GlobalExceptionHandler::class, MovieControllerTest.Config::class)
+@Import(
+    GlobalExceptionHandler::class,
+    SecurityConfig::class,
+    ApiAuthenticationEntryPoint::class,
+    MovieControllerTest.Config::class,
+)
 class MovieControllerTest @Autowired constructor(
     private val mvc: MockMvc,
     private val service: MovieService,
@@ -27,6 +38,9 @@ class MovieControllerTest @Autowired constructor(
     class Config {
         @Bean
         fun movieService(): MovieService = mockk()
+
+        @Bean
+        fun appProperties() = AppProperties()
     }
 
     private val dto = MovieDto(
@@ -82,5 +96,63 @@ class MovieControllerTest @Autowired constructor(
     fun `search without query returns 400`() {
         mvc.perform(get("/api/movies/search"))
             .andExpect(status().isBadRequest)
+    }
+
+    private fun patchMovie(body: String, withCredentials: Boolean = true) =
+        patch("/api/movies/550").contentType(MediaType.APPLICATION_JSON).content(body).let {
+            if (withCredentials) it.with(httpBasic("admin", "admin123")) else it
+        }
+
+    @Test
+    fun `patch without credentials returns 401 ApiError`() {
+        mvc.perform(patchMovie("""{"title":"New"}""", withCredentials = false))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.status").value(401))
+    }
+
+    @Test
+    fun `patch with wrong password returns 401`() {
+        mvc.perform(patchMovie("""{"title":"New"}""", withCredentials = false).with(httpBasic("admin", "wrong")))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `patch with admin credentials returns the updated movie`() {
+        every { service.updateMovie(550, any()) } returns dto.copy(title = "New", voteAverage = 9.1)
+
+        mvc.perform(patchMovie("""{"title":"New","vote_average":9.1,"release_date":"1999-10-15"}"""))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.title").value("New"))
+            .andExpect(jsonPath("$.vote_average").value(9.1))
+    }
+
+    @Test
+    fun `patch with invalid fields returns 400 with field errors`() {
+        mvc.perform(patchMovie("""{"vote_average":11,"title":""}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("Validation failed"))
+            .andExpect(jsonPath("$.details.length()").value(2))
+            .andExpect(jsonPath("$.details[?(@ =~ /vote_average.*/)]").isNotEmpty)
+    }
+
+    @Test
+    fun `patch with malformed json returns 400`() {
+        mvc.perform(patchMovie("{not json"))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `patch of a missing movie returns 404`() {
+        every { service.updateMovie(550, any()) } throws MovieNotFoundException(550)
+
+        mvc.perform(patchMovie("""{"title":"New"}"""))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `reading stays public`() {
+        every { service.get(550) } returns dto
+
+        mvc.perform(get("/api/movies/550")).andExpect(status().isOk)
     }
 }
