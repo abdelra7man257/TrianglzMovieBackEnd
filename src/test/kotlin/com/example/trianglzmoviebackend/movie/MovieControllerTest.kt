@@ -18,6 +18,9 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.Instant
@@ -147,6 +150,17 @@ class MovieControllerTest @Autowired constructor(
 
         mvc.perform(patchMovie("""{"title":"New"}"""))
             .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `unexpected errors return a generic 500 without leaking details`() {
+        every { service.get(1) } throws IllegalStateException("jdbc:postgresql://secret-host password=hunter2")
+
+        mvc.perform(get("/api/movies/1"))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.status").value(500))
+            .andExpect(jsonPath("$.message").value("Unexpected server error"))
+            .andExpect(content().string(not(containsString("hunter2"))))
     }
 
     @Test
