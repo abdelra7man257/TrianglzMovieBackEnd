@@ -1,7 +1,7 @@
 package com.example.trianglzmoviebackend.movie
 
+import com.example.trianglzmoviebackend.common.PagedResponse
 import com.example.trianglzmoviebackend.common.GlobalExceptionHandler
-import com.example.trianglzmoviebackend.common.MovieNotFoundException
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test

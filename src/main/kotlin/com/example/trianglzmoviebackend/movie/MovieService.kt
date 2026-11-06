@@ -1,6 +1,6 @@
 package com.example.trianglzmoviebackend.movie
 
-import com.example.trianglzmoviebackend.common.MovieNotFoundException
+import com.example.trianglzmoviebackend.common.PagedResponse
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service

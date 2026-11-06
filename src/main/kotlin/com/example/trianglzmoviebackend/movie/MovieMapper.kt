@@ -1,5 +1,6 @@
 package com.example.trianglzmoviebackend.movie
 
+import com.example.trianglzmoviebackend.common.PagedResponse
 import org.springframework.data.domain.Page
 
 fun Movie.toDto() = MovieDto(

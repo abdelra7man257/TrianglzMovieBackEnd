@@ -1,5 +1,6 @@
 package com.example.trianglzmoviebackend.common
 
+import com.example.trianglzmoviebackend.movie.MovieNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity

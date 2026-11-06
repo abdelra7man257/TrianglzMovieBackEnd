@@ -1,6 +1,6 @@
 package com.example.trianglzmoviebackend.movie
 
-import com.example.trianglzmoviebackend.common.MovieNotFoundException
+import com.example.trianglzmoviebackend.common.PagedResponse
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
