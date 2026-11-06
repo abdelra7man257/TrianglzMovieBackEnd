@@ -7,6 +7,7 @@ import io.mockk.slot
 import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
@@ -16,7 +17,8 @@ import kotlin.test.assertTrue
 
 class MovieServiceTest {
     private val repository = mockk<MovieRepository>()
-    private val service = MovieService(repository)
+    private val eventPublisher = mockk<ApplicationEventPublisher>(relaxed = true)
+    private val service = MovieService(repository, eventPublisher)
 
     private fun movie(id: Long = 1, title: String = "Fight Club") = Movie(id = id, title = title)
 
@@ -78,5 +80,55 @@ class MovieServiceTest {
         val dto = service.get(1)
 
         assertEquals(listOf("Drama"), dto.genres)
+    }
+
+    @Test
+    fun `update changes only provided fields, marks movie as modified and publishes an event`() {
+        val movie = movie().apply { overview = "old"; genres = mutableListOf("Drama") }
+        val event = slot<Any>()
+        every { repository.findById(1) } returns Optional.of(movie)
+        every { repository.save(movie) } returns movie
+        every { eventPublisher.publishEvent(capture(event)) } returns Unit
+
+        val dto = service.updateMovie(1, MovieUpdateRequest(title = "  Fight Club (Edited) ", voteAverage = 9.1))
+
+        assertEquals("Fight Club (Edited)", dto.title)
+        assertEquals(9.1, dto.voteAverage)
+        assertEquals("old", dto.overview)
+        assertEquals(listOf("Drama"), dto.genres)
+        assertTrue(movie.locallyModified)
+        val published = event.captured as MovieUpdatedEvent
+        assertEquals(1, published.movieId)
+        assertEquals("Fight Club (Edited)", published.title)
+    }
+
+    @Test
+    fun `update replaces genres and drops blank ones`() {
+        val movie = movie()
+        every { repository.findById(1) } returns Optional.of(movie)
+        every { repository.save(movie) } returns movie
+
+        val dto = service.updateMovie(1, MovieUpdateRequest(genres = listOf(" Drama ", "", "Thriller")))
+
+        assertEquals(listOf("Drama", "Thriller"), dto.genres)
+    }
+
+    @Test
+    fun `update with no fields is rejected`() {
+        assertThrows<IllegalArgumentException> { service.updateMovie(1, MovieUpdateRequest()) }
+        verify(exactly = 0) { eventPublisher.publishEvent(any<Any>()) }
+    }
+
+    @Test
+    fun `update with blank title is rejected`() {
+        assertThrows<IllegalArgumentException> { service.updateMovie(1, MovieUpdateRequest(title = "   ")) }
+    }
+
+    @Test
+    fun `update of a missing movie throws and publishes nothing`() {
+        every { repository.findById(999) } returns Optional.empty()
+
+        assertThrows<MovieNotFoundException> { service.updateMovie(999, MovieUpdateRequest(title = "x")) }
+        verify(exactly = 0) { eventPublisher.publishEvent(any<Any>()) }
     }
 }
