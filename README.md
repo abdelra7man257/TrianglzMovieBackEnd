@@ -36,6 +36,8 @@ set -a; . ./.env; set +a     # optional: load your TMDb key and other settings
 
 This stores data in `./data/` (git-ignored). Delete that folder to start fresh.
 
+> If your `.env` sets `FIREBASE_CREDENTIALS_PATH=/secrets/...`, that path only exists inside the Docker container. When running without Docker, override it with the real file path (for example `FIREBASE_CREDENTIALS_PATH=$PWD/secrets/<file>.json`) or leave it empty for log-only mode. A wrong path stops the app at startup.
+
 ### Tests
 
 ```bash
