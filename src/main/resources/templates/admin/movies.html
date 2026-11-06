@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('Movies')}"></head>
+<body>
+<header th:replace="~{admin/fragments :: topbar}"></header>
+<main class="container">
+    <div class="alert alert-success" th:if="${successMessage}" th:text="${successMessage}" role="status"></div>
+    <div class="alert alert-error" th:if="${errorMessage}" th:text="${errorMessage}" role="alert"></div>
+
+    <section class="card">
+        <form class="search" th:action="@{/admin/movies}" method="get">
+            <input type="search" name="query" th:value="${query}" placeholder="Search by title" aria-label="Search by title">
+            <button class="btn btn-primary" type="submit">Search</button>
+            <a class="btn" th:if="${!query.isEmpty()}" th:href="@{/admin/movies}">Clear</a>
+        </form>
+
+        <p class="hint" th:text="${moviesPage.totalResults} + (${moviesPage.totalResults == 1} ? ' movie' : ' movies')"></p>
+
+        <table th:if="${!moviesPage.results.isEmpty()}">
+            <thead>
+            <tr><th></th><th>Title</th><th class="col-hide">Year</th><th>Rating</th><th class="col-hide">Genres</th><th></th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="row : ${moviesPage.results}">
+                <td>
+                    <img class="poster" th:if="${row.movie.posterPath != null}" alt=""
+                         th:src="'https://image.tmdb.org/t/p/w92' + ${row.movie.posterPath}">
+                    <span class="poster" th:unless="${row.movie.posterPath != null}"></span>
+                </td>
+                <td>
+                    <span th:text="${row.movie.title}"></span>
+                    <span class="badge" th:if="${row.locallyModified}">Edited</span>
+                </td>
+                <td class="col-hide" th:text="${row.movie.releaseDate != null ? row.movie.releaseDate.year : '-'}"></td>
+                <td th:text="${#numbers.formatDecimal(row.movie.voteAverage, 1, 1)}"></td>
+                <td class="col-hide" th:text="${#strings.listJoin(row.movie.genres, ', ')}"></td>
+                <td><a class="btn" th:href="@{/admin/movies/{id}/edit(id=${row.movie.id})}">Edit</a></td>
+            </tr>
+            </tbody>
+        </table>
+        <p th:if="${moviesPage.results.isEmpty()}">No movies found.</p>
+
+        <nav class="pager" th:if="${moviesPage.totalPages > 1}" aria-label="Pagination">
+            <a class="btn" th:if="${moviesPage.page > 1}"
+               th:href="@{/admin/movies(query=${query}, page=${moviesPage.page - 1})}">Previous</a>
+            <span th:unless="${moviesPage.page > 1}"></span>
+            <span class="hint" th:text="'Page ' + ${moviesPage.page} + ' of ' + ${moviesPage.totalPages}"></span>
+            <a class="btn" th:if="${moviesPage.page < moviesPage.totalPages}"
+               th:href="@{/admin/movies(query=${query}, page=${moviesPage.page + 1})}">Next</a>
+            <span th:unless="${moviesPage.page < moviesPage.totalPages}"></span>
+        </nav>
+    </section>
+</main>
+</body>
+</html>
