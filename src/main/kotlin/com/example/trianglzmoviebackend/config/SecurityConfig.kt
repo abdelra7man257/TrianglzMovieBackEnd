@@ -36,9 +36,28 @@ class SecurityConfig {
         return http.build()
     }
 
-    /** Everything else (Swagger UI, health, docs) is public until the admin portal chain is added. */
+    /** Admin portal: form login with a session. CSRF stays enabled (Thymeleaf adds the token to forms). */
     @Bean
     @Order(2)
+    fun adminPortalSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
+        http {
+            securityMatcher("/admin/**", "/login", "/logout")
+            authorizeHttpRequests {
+                authorize("/login", permitAll)
+                authorize(anyRequest, hasRole(ADMIN_ROLE))
+            }
+            formLogin {
+                loginPage = "/login"
+                defaultSuccessUrl("/admin/movies", true)
+            }
+            logout { logoutSuccessUrl = "/login?logout" }
+        }
+        return http.build()
+    }
+
+    /** Everything else (Swagger UI, health, API docs) is public. */
+    @Bean
+    @Order(3)
     fun publicSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http {
             csrf { disable() }

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title} + ' · Movie Admin'">Movie Admin</title>
+    <style>
+        :root {
+            --bg: #f6f7f9; --surface: #ffffff; --text: #1b1f27; --muted: #667085; --border: #e2e5ea;
+            --accent: #3b4cca; --accent-text: #ffffff; --danger: #b42318; --danger-bg: #fef3f2;
+            --success: #067647; --success-bg: #ecfdf3; --badge-bg: #fff4e5; --badge-text: #9a5b00;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #12141a; --surface: #1b1f27; --text: #eceef2; --muted: #98a2b3; --border: #2f3542;
+                --accent: #8b98ff; --accent-text: #12141a; --danger: #fda29b; --danger-bg: #3a1c1a;
+                --success: #75e0a7; --success-bg: #12281c; --badge-bg: #3a2a0f; --badge-text: #ffcb7a;
+            }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text);
+               font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        a { color: var(--accent); }
+        .topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px;
+                  background: var(--surface); border-bottom: 1px solid var(--border); }
+        .topbar h1 { font-size: 17px; margin: 0; }
+        .container { max-width: 1040px; margin: 24px auto; padding: 0 16px; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+        .btn { display: inline-block; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+               background: var(--surface); color: var(--text); font: inherit; text-decoration: none; cursor: pointer; }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+        .btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .alert { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; }
+        .alert-success { background: var(--success-bg); color: var(--success); }
+        .alert-error { background: var(--danger-bg); color: var(--danger); }
+        .search { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .search input { flex: 1; min-width: 200px; }
+        input, textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+                          background: var(--surface); color: var(--text); font: inherit; }
+        label { display: block; font-weight: 600; margin: 14px 0 4px; }
+        .hint { color: var(--muted); font-size: 13px; }
+        .field-error { color: var(--danger); font-size: 13px; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        th { color: var(--muted); font-size: 13px; font-weight: 600; }
+        .poster { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; background: var(--border); display: block; }
+        .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px;
+                 background: var(--badge-bg); color: var(--badge-text); margin-left: 6px; }
+        .pager { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+        .actions { display: flex; gap: 8px; margin-top: 20px; }
+        .login { max-width: 360px; margin: 12vh auto; }
+        @media (max-width: 720px) { .col-hide { display: none; } }
+    </style>
+</head>
+<body>
+<header th:fragment="topbar" class="topbar">
+    <h1>Movie Admin</h1>
+    <form th:action="@{/logout}" method="post">
+        <button class="btn" type="submit">Log out</button>
+    </form>
+</header>
+</body>
+</html>

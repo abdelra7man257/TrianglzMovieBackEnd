@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('Edit movie')}"></head>
+<body>
+<header th:replace="~{admin/fragments :: topbar}"></header>
+<main class="container">
+    <section class="card">
+        <h2>Edit movie <span class="hint" th:text="'#' + ${movieId}"></span></h2>
+        <p class="hint">Saving marks the movie as edited and sends a push notification to the app.</p>
+
+        <form th:action="@{/admin/movies/{id}(id=${movieId})}" th:object="${form}" method="post" novalidate>
+            <label for="title">Title</label>
+            <input id="title" th:field="*{title}" type="text" required>
+            <div class="field-error" th:if="${#fields.hasErrors('title')}" th:errors="*{title}"></div>
+
+            <label for="overview">Overview</label>
+            <textarea id="overview" th:field="*{overview}" rows="6"></textarea>
+            <div class="field-error" th:if="${#fields.hasErrors('overview')}" th:errors="*{overview}"></div>
+
+            <label for="posterPath">Poster path</label>
+            <input id="posterPath" th:field="*{posterPath}" type="text" placeholder="/abc123.jpg">
+            <div class="field-error" th:if="${#fields.hasErrors('posterPath')}" th:errors="*{posterPath}"></div>
+
+            <label for="releaseDate">Release date</label>
+            <input id="releaseDate" th:field="*{releaseDate}" type="date">
+            <div class="field-error" th:if="${#fields.hasErrors('releaseDate')}" th:errors="*{releaseDate}"></div>
+
+            <label for="voteAverage">Rating (0 to 10)</label>
+            <input id="voteAverage" th:field="*{voteAverage}" type="number" step="0.1" min="0" max="10" required>
+            <div class="field-error" th:if="${#fields.hasErrors('voteAverage')}" th:errors="*{voteAverage}"></div>
+
+            <label for="genresText">Genres</label>
+            <input id="genresText" th:field="*{genresText}" type="text" placeholder="Drama, Thriller">
+            <div class="hint">Separate with commas, up to 10.</div>
+            <div class="field-error" th:if="${#fields.hasErrors('genresText')}" th:errors="*{genresText}"></div>
+
+            <div class="actions">
+                <button class="btn btn-primary" type="submit">Save</button>
+                <a class="btn" th:href="@{/admin/movies}">Cancel</a>
+            </div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

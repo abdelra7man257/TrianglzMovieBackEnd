@@ -46,7 +46,7 @@ dependencies {
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
     testImplementation("io.mockk:mockk:1.13.13")
-    testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

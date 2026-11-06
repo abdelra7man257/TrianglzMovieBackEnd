@@ -28,6 +28,22 @@ class MovieService(
         return repository.findByTitleContainingIgnoreCase(q, pageable(p, size)).toResponse(p)
     }
 
+    /** Admin portal listing: all movies, or only title matches when [query] is not blank. */
+    @Transactional(readOnly = true)
+    fun listForAdmin(query: String, page: Int, size: Int): PagedResponse<MovieAdminDto> {
+        val p = clampPage(page)
+        val trimmedQuery = query.trim()
+        val movies =
+            if (trimmedQuery.isEmpty()) repository.findAll(pageable(p, size))
+            else repository.findByTitleContainingIgnoreCase(trimmedQuery, pageable(p, size))
+        return PagedResponse(
+            page = p,
+            results = movies.content.map { MovieAdminDto(it.toDto(), it.locallyModified) },
+            totalPages = movies.totalPages,
+            totalResults = movies.totalElements,
+        )
+    }
+
     @Transactional(readOnly = true)
     fun get(id: Long): MovieDto =
         repository.findById(id).orElseThrow { MovieNotFoundException(id) }.toDto()
