@@ -41,58 +41,81 @@ class MovieUpdatedPushNotifierTest {
     }
 
     @Test
-    fun `payload keeps the four basic fields and adds the changed field names`() {
+    fun `every movie field is its own key with a string value`() {
         val payload = payloadFactory.create(event)
 
-        assertEquals("MOVIE_UPDATED", payload["type"])
-        assertEquals("550", payload["movie_id"])
-        assertEquals("Fight Club (Edited)", payload["title"])
-        assertEquals("2026-11-06T19:10:00Z", payload["updated_at"])
-        assertEquals("title,vote_average", payload["updated_fields"])
+        assertEquals(
+            mapOf(
+                "type" to "MOVIE_UPDATED",
+                "movie_id" to "550",
+                "updated_at" to "2026-11-06T19:10:00Z",
+                "updated_fields" to "title,vote_average",
+                "title" to "Fight Club (Edited)",
+                "overview" to "New synopsis",
+                "poster_path" to "/p.jpg",
+                "backdrop_path" to "/b.jpg",
+                "release_date" to "1999-10-15",
+                "vote_average" to "9.1",
+                "vote_count" to "27000",
+                "popularity" to "61.4",
+                "genres" to """["Drama","Thriller"]""",
+            ),
+            payload,
+        )
     }
 
     @Test
-    fun `payload carries the complete updated movie in the same json as the API`() {
-        val movieJson = jsonMapper.readTree(payloadFactory.create(event).getValue("movie"))
-
-        assertEquals(550, movieJson["id"].asInt())
-        assertEquals("Fight Club (Edited)", movieJson["title"].asString())
-        assertEquals("New synopsis", movieJson["overview"].asString())
-        assertEquals("/p.jpg", movieJson["poster_path"].asString())
-        assertEquals("/b.jpg", movieJson["backdrop_path"].asString())
-        assertEquals("1999-10-15", movieJson["release_date"].asString())
-        assertEquals(9.1, movieJson["vote_average"].asDouble())
-        assertEquals(27_000, movieJson["vote_count"].asInt())
-        assertEquals(61.4, movieJson["popularity"].asDouble())
-        assertEquals("""["Drama","Thriller"]""", movieJson["genres"].toString())
-        assertEquals("2026-11-06T19:10:00Z", movieJson["updated_at"].asString())
+    fun `there is no nested movie object`() {
+        assertFalse(payloadFactory.create(event).containsKey("movie"))
     }
 
     @Test
-    fun `missing optional values stay null inside the movie json`() {
+    fun `fields without a value are left out`() {
         val sparse = movie.copy(overview = null, posterPath = null, backdropPath = null, releaseDate = null)
-        val movieJson = jsonMapper.readTree(payloadFactory.create(event.copy(movie = sparse)).getValue("movie"))
 
-        assertTrue(movieJson["poster_path"].isNull)
-        assertTrue(movieJson["release_date"].isNull)
+        val payload = payloadFactory.create(event.copy(movie = sparse))
+
+        assertFalse(payload.keys.any { it in setOf("overview", "poster_path", "backdrop_path", "release_date") })
+        assertEquals("Fight Club (Edited)", payload["title"])
     }
 
     @Test
-    fun `an oversized movie is left out so the message stays under the FCM limit`() {
+    fun `no genres are sent as an empty json array`() {
+        assertEquals("[]", payloadFactory.create(event.copy(movie = movie.copy(genres = emptyList())))["genres"])
+    }
+
+    @Test
+    fun `numbers never use scientific notation`() {
+        val payload = payloadFactory.create(event.copy(movie = movie.copy(voteAverage = 0.00001, popularity = 12345678.5)))
+
+        assertEquals("0.00001", payload["vote_average"])
+        assertEquals("12345678.5", payload["popularity"])
+    }
+
+    @Test
+    fun `a genre containing a comma or quote survives intact`() {
+        val payload = payloadFactory.create(event.copy(movie = movie.copy(genres = listOf("Rock, Pop", "\"Odd\""))))
+
+        assertEquals("""["Rock, Pop","\"Odd\""]""", payload["genres"])
+    }
+
+    @Test
+    fun `an oversized message drops the overview and is marked partial`() {
         val payload = payloadFactory.create(event.copy(movie = movie.copy(overview = "x".repeat(5000))))
 
-        assertFalse(payload.containsKey("movie"))
+        assertFalse(payload.containsKey("overview"))
+        assertEquals("true", payload["partial"])
         assertEquals("550", payload["movie_id"])
-        assertEquals("title,vote_average", payload["updated_fields"])
+        assertEquals("Fight Club (Edited)", payload["title"])
         assertTrue(payload.entries.sumOf { it.key.toByteArray().size + it.value.toByteArray().size } < 4096)
     }
 
     @Test
-    fun `a long but allowed overview is still sent in full`() {
+    fun `a long but allowed overview is sent in full and not marked partial`() {
         val payload = payloadFactory.create(event.copy(movie = movie.copy(overview = "y".repeat(2000))))
 
-        assertTrue(payload.containsKey("movie"))
-        assertTrue(payload.getValue("movie").contains("y".repeat(2000)))
+        assertEquals("y".repeat(2000), payload["overview"])
+        assertFalse(payload.containsKey("partial"))
     }
 
     @Test
