@@ -48,29 +48,50 @@ class MovieService(
     fun get(id: Long): MovieDto =
         repository.findById(id).orElseThrow { MovieNotFoundException(id) }.toDto()
 
-    /** Applies a partial edit, marks the movie as locally modified and announces the change. */
+    /**
+     * Applies a partial edit. Only a real change in content is saved and announced: values that
+     * differ only by whitespace, genre order or null-versus-empty are ignored. In that case nothing
+     * is saved, the movie is not marked as edited and no push notification is sent.
+     */
     @Transactional
     fun updateMovie(id: Long, request: MovieUpdateRequest): MovieDto {
         require(!request.hasNoChanges()) { "At least one field must be provided" }
         require(request.title?.isBlank() != true) { "Title must not be blank" }
 
         val movie = repository.findById(id).orElseThrow { MovieNotFoundException(id) }
-        movie.applyEdit(request)
+        if (!movie.applyEdit(request)) return movie.toDto()
+
         movie.locallyModified = true
         movie.updatedAt = Instant.now()
-        val saved = repository.save(movie)
+        val updatedMovie = repository.save(movie).toDto()
 
-        eventPublisher.publishEvent(MovieUpdatedEvent(saved.id, saved.title, saved.updatedAt))
-        return saved.toDto()
+        eventPublisher.publishEvent(MovieUpdatedEvent(updatedMovie.id, updatedMovie.title, updatedMovie.updatedAt))
+        return updatedMovie
     }
 
-    private fun Movie.applyEdit(request: MovieUpdateRequest) {
-        request.title?.let { title = it.trim() }
-        request.overview?.let { overview = it }
-        request.posterPath?.let { posterPath = it }
-        request.releaseDate?.let { releaseDate = it }
-        request.voteAverage?.let { voteAverage = it }
-        request.genres?.let { newGenres -> genres = newGenres.map(String::trim).filter(String::isNotEmpty).toMutableList() }
+    /** Copies the fields whose normalized value differs. Returns true if at least one did. */
+    private fun Movie.applyEdit(request: MovieUpdateRequest): Boolean {
+        var changed = false
+
+        request.title?.normalizedSingleLine()?.let { newTitle ->
+            if (newTitle != title.normalizedSingleLine()) { title = newTitle; changed = true }
+        }
+        request.overview?.normalizedMultiLine()?.let { newOverview ->
+            if (newOverview != overview.orEmpty().normalizedMultiLine()) { overview = newOverview; changed = true }
+        }
+        request.posterPath?.trim()?.let { newPosterPath ->
+            if (newPosterPath != posterPath.orEmpty().trim()) { posterPath = newPosterPath; changed = true }
+        }
+        request.releaseDate?.let { newReleaseDate ->
+            if (newReleaseDate != releaseDate) { releaseDate = newReleaseDate; changed = true }
+        }
+        request.voteAverage?.let { newVoteAverage ->
+            if (!newVoteAverage.sameRatingAs(voteAverage)) { voteAverage = newVoteAverage; changed = true }
+        }
+        request.genres?.normalizedGenres()?.let { newGenres ->
+            if (newGenres.toSet() != genres.normalizedGenres().toSet()) { genres = newGenres.toMutableList(); changed = true }
+        }
+        return changed
     }
 
     private fun clampPage(page: Int) = page.coerceAtLeast(1)

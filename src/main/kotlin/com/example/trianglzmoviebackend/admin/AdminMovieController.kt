@@ -56,7 +56,7 @@ class AdminMovieController(private val movieService: MovieService) {
             return "admin/edit"
         }
         val updated = movieService.updateMovie(id, form.toUpdateRequest())
-        redirectAttributes.addFlashAttribute("successMessage", "Saved \"${updated.title}\". The app was notified.")
+        redirectAttributes.addFlashAttribute("successMessage", "Saved \"${updated.title}\".")
         return "redirect:/admin/movies"
     }
 
