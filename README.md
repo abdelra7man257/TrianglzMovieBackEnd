@@ -28,6 +28,14 @@ A Kotlin + Spring Boot backend for the movie app. It serves the movies list, pag
 
 Pick one option. Option A needs only Docker. Option B needs Java 17.
 
+**On Windows:** double-click `setup-and-run.bat` (or run it in a terminal). It does Option A for you:
+1. checks that Docker is installed and running,
+2. creates `.env` the first time and asks for your TMDb key (press Enter to skip),
+3. uses the Firebase file from the `secrets/` folder if there is one,
+4. starts the backend with Docker Compose, waits until it is healthy, and opens Swagger UI.
+
+The menu also has: start without Docker (Option B), stop, show the log, and open the pages. You can skip the menu with `setup-and-run.bat docker`, `local`, `stop` or `logs`.
+
 ### Option A: Docker (recommended)
 
 1. Copy the settings file:
