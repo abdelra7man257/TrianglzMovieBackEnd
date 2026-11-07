@@ -26,43 +26,142 @@ A Kotlin + Spring Boot backend for the movie app. It serves the movies list, pag
 
 ## 1. Run it locally
 
-Pick one option. Option A needs only Docker. Option B needs Java 17.
+Follow the steps in order. You do not need a TMDb key or a Firebase file to start: without them the backend uses 25 sample movies and only logs the push. You can add both later (section 2).
 
-### Option A: Docker (recommended)
+### Which way should I run it?
 
-1. Copy the settings file:
+| Way | You need | Choose it when |
+|---|---|---|
+| **A. Setup script** | Docker Desktop | You want the easiest start (recommended) |
+| **B. Docker by hand** | Docker Desktop | You want to see and run each command yourself |
+| **C. Without Docker** | JDK 17 | You cannot use Docker. Uses a small file database instead of Postgres |
+
+### Step 0: Before you start
+
+1. **Get the code** and open a terminal in the project folder:
    ```bash
-   cp .env.example .env
+   git clone https://github.com/abdelra7man257/TrianglzMovieBackEnd.git
+   cd TrianglzMovieBackEnd
    ```
-2. Open `.env` and set `TMDB_API_KEY=<your key>` (see [section 2](#2-api-keys-and-configuration)). You can leave it empty to use the 25 sample movies.
-3. Start everything:
+2. **Install what you need** and check it works:
+
+   | For | Install | Check with | You should see |
+   |---|---|---|---|
+   | A and B | [Docker Desktop](https://www.docker.com/products/docker-desktop) (start it and wait until it says it is running) | `docker --version` and `docker compose version` | a version number for each |
+   | C | **JDK 17**, for example from [adoptium.net](https://adoptium.net). The build asks for Java 17 exactly, so having only a newer Java (21, 25) is **not enough**. Several Java versions side by side is fine | `java -version` (or `/usr/libexec/java_home -V` on macOS, `dir "C:\Program Files\Java"` on Windows) | `17` in the version, or in the list of installed Javas |
+
+3. **Free the ports.** The backend uses port **8080** (API) and **5432** (database, Docker only). If another program uses them, you can change them in `.env` later (see "If a port is already used" below).
+4. **Internet is needed** on the first run (downloads Docker images, Gradle and libraries).
+
+### A. Setup script (recommended)
+
+| System | How to run it |
+|---|---|
+| Windows | Double-click `setup-and-run.bat` (or run it in a terminal) |
+| macOS / Linux | In the terminal, in the project folder: `./setup-and-run.sh` |
+
+1. Run the script. A menu appears. Choose **1** (Setup and start with Docker).
+2. The first time it creates a `.env` settings file and asks: `TMDb API key (v3):`. Paste your key, or press **Enter** to skip and use sample movies. (How to get a key: [section 2](#get-a-tmdb-key).)
+3. If there is a Firebase file in the `secrets/` folder, the script uses it automatically. If not, it says push notifications will only be logged.
+4. It builds and starts the backend and waits until it is healthy. **The first run takes a few minutes.**
+5. When it is ready it prints the addresses and opens Swagger UI in your browser:
+   ```
+   ===================== The backend is running =====================
+     Swagger UI    http://localhost:8080/swagger-ui.html
+     API           http://localhost:8080/api/movies
+     Admin portal  http://localhost:8080/admin/movies   (admin / admin123)
+     Android app   http://10.0.2.2:8080/api/   (from the emulator)
+   ```
+6. Go to [Check that it works](#check-that-it-works).
+
+You can skip the menu by adding an option: `docker`, `local` (no Docker), `stop`, `logs` or `open`. For example `./setup-and-run.sh stop`.
+
+### B. Docker by hand
+
+1. **Create your settings file** from the template:
+   ```bash
+   cp .env.example .env          # Windows (cmd): copy .env.example .env
+   ```
+2. **Edit `.env`** (optional). To get real movies, set your key on the line `TMDB_API_KEY=` (no spaces around `=`). Leave everything else as it is for now.
+3. **Start everything** (database and backend):
    ```bash
    docker compose up --build
    ```
-4. Wait until the log shows `TMDb sync: 200 movies imported` (or `Seeded 25 dummy movies`).
-5. Open <http://localhost:8080/swagger-ui.html>.
-
-If port 8080 or 5432 is already used on your machine, set `API_PORT` and/or `DB_PORT` in `.env` (for example `API_PORT=8081`) and use that port in every URL in this file.
-
-Stop it with `docker compose down`. Your data stays in a Docker volume. Use `docker compose down -v` to delete the data too.
-
-### Option B: Without Docker
-
-This uses a file database in `./data` (git-ignored).
-
-1. *(Optional)* load your settings:
-   ```bash
-   set -a; . ./.env; set +a
+   The first run downloads images and builds the app, which takes a few minutes.
+4. **Wait until the backend is ready.** Look for these lines in the log:
    ```
-2. Start:
-   ```bash
-   ./gradlew bootRun --args='--spring.profiles.active=local'
+   TMDb sync: 200 movies imported          (or: Seeded 25 dummy movies)
+   Started TrianglzMovieBackEndApplicationKt in ... seconds
    ```
-3. Open <http://localhost:8080/swagger-ui.html>.
+   Leave this terminal open. It shows the log. Press **Ctrl+C** to stop.
+   *(Tip: use `docker compose up --build -d` to run in the background, then `docker compose logs -f api` to read the log.)*
+5. Go to [Check that it works](#check-that-it-works).
 
-> If your `.env` has `FIREBASE_CREDENTIALS_PATH=/secrets/...`, that path only exists inside Docker. Without Docker, set it to the real file path (for example `$PWD/secrets/<file>.json`) or clear it. A wrong path stops the app at startup.
+### C. Without Docker
 
-To start with fresh data, delete the `data` folder.
+This uses a file database in the `data/` folder (git-ignored) and needs JDK 17 (see step 0).
+
+1. **Create your settings file** (needed only if you want a TMDb key, otherwise skip to step 3):
+   ```bash
+   cp .env.example .env          # Windows (cmd): copy .env.example .env
+   ```
+2. **Load the settings into your terminal** (optional, so the TMDb key is used):
+
+   | System | Command |
+   |---|---|
+   | macOS / Linux | `set -a; . ./.env; set +a` |
+   | Windows (cmd) | `set TMDB_API_KEY=<your key>` |
+   | Windows (PowerShell) | `$env:TMDB_API_KEY="<your key>"` |
+
+   Do **not** load `FIREBASE_CREDENTIALS_PATH=/secrets/...` from `.env`. That path only exists inside Docker, and a wrong path stops the app at startup. Without Docker, either leave it empty or set it to the real file path.
+3. **Start the backend:**
+
+   | System | Command |
+   |---|---|
+   | macOS / Linux | `./gradlew bootRun --args='--spring.profiles.active=local'` |
+   | Windows | `gradlew.bat bootRun --args="--spring.profiles.active=local"` |
+
+   The first run downloads Gradle and libraries, which takes a few minutes. The easy alternative is the script: `./setup-and-run.sh local` (macOS / Linux) or `setup-and-run.bat local` (Windows). It loads `.env` for you and fixes the Firebase path.
+4. **Wait for** `Started TrianglzMovieBackEndApplicationKt` in the log. Press **Ctrl+C** to stop.
+5. Go to [Check that it works](#check-that-it-works).
+
+### Check that it works
+
+Use port 8080, or your `API_PORT` if you changed it.
+
+| # | Check | How | You should see |
+|---|---|---|---|
+| 1 | The backend is healthy | Open <http://localhost:8080/actuator/health> | `{"status":"UP", ...}` |
+| 2 | Movies are loaded | Open <http://localhost:8080/api/movies?size=2> | JSON with `total_results` of about **200** (real TMDb data) or **25** (sample data) |
+| 3 | Search works | Open <http://localhost:8080/api/movies/search?query=the> | JSON with matching movies |
+| 4 | Swagger UI opens | Open <http://localhost:8080/swagger-ui.html> | The API page with 4 endpoints |
+| 5 | The admin portal works | Open <http://localhost:8080/admin/movies>, sign in with `admin` / `admin123` | The movie list with posters |
+| 6 | Editing works | In Swagger UI click **Authorize** (`admin` / `admin123`), then `PATCH /api/movies/{id}` with `{"title": "Test"}` | `200` and the movie with the new title. The log shows `FCM log-only mode` (or `FCM sent` if Firebase is set up) |
+
+If all six work, the backend is ready. For the Android app see [section 5](#5-android-integration-guide).
+
+### Everyday commands
+
+| I want to... | Docker (A or B) | Without Docker (C) |
+|---|---|---|
+| Stop | `docker compose down` (or `./setup-and-run.sh stop`) | Press **Ctrl+C** |
+| Start again | `docker compose up -d` | Run the start command again |
+| Read the log | `docker compose logs -f api` | It is in the terminal |
+| Use my new code after a `git pull` | `docker compose up --build -d` | Stop and start again |
+| Start with fresh data | `docker compose down -v` (deletes the database), then start | Delete the `data/` folder, then start |
+| Run the tests | `./gradlew test` (Windows: `gradlew.bat test`) | same |
+
+Your data stays between stops. Only `docker compose down -v` or deleting `data/` removes it.
+
+### If a port is already used
+
+An error like `port is already allocated` (Docker) or `Port 8080 was already in use` means another program uses the port.
+
+1. Open `.env`.
+2. Change the port, for example `API_PORT=8081` and/or `DB_PORT=5433`.
+3. Start again, and use the **new port in every address** in this file (the Android emulator then uses `http://10.0.2.2:8081/api/`).
+
+For other problems see [Troubleshooting](#8-troubleshooting).
 
 ---
 
@@ -577,6 +676,7 @@ api.http            ready-made requests
 | Problem | Fix |
 |---|---|
 | `port is already allocated` | Set `API_PORT` / `DB_PORT` in `.env` and restart |
+| Gradle says it cannot find a Java 17 installation (the message mentions `toolchain`) | Install JDK 17. Only a newer Java is not enough. Or use Docker, which needs no Java |
 | App stops at startup with a file-not-found error for Firebase | `FIREBASE_CREDENTIALS_PATH` is wrong. Inside Docker use `/secrets/<file>`; without Docker use the real path or clear it |
 | Log says `FCM log-only mode` | No Firebase credentials are set, so nothing is really sent |
 | `TMDb sync failed ... HTTP 401` | Wrong `TMDB_API_KEY`. The app keeps running with sample data |
