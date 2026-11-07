@@ -3,7 +3,7 @@
 **Status:** accepted
 
 ## Context
-The bonus needs a REST API, persistence with paging, validation, security, an admin UI and Swagger. The team already writes Kotlin for the Android app.
+REST API, persistence with paging, validation, security, an admin UI and Swagger. The team already writes Kotlin for the Android app.
 
 ## Decision
 Use Spring Boot with Kotlin.
