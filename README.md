@@ -18,7 +18,7 @@ A Kotlin + Spring Boot backend for the movie app. It serves the movies list, pag
 3. [Using the backend](#3-using-the-backend)
 4. [When is a push sent, and what does it contain?](#4-when-is-a-push-sent-and-what-does-it-contain)
 5. [Android integration guide](#5-android-integration-guide)
-6. [Architectural decisions](#6-architectural-decisions)
+6. [Architecture and decisions](#6-architecture-and-decisions)
 7. [Tests and project layout](#7-tests-and-project-layout)
 8. [Troubleshooting](#8-troubleshooting)
 
@@ -195,14 +195,91 @@ curl -u admin:admin123 -X PATCH http://localhost:8080/api/movies/550 \
 - **Postman:** import `postman/MovieBackend.postman_collection.json` and set the `baseUrl` variable.
 - **IntelliJ / VS Code:** open `api.http` (settings in `http-client.env.json`).
 
-### Admin portal
+### Admin portal: every edit operation
 
-1. Open <http://localhost:8080/admin/movies>. You are sent to the login page.
-2. Sign in with `admin` / `admin123` (or your `ADMIN_USERNAME` / `ADMIN_PASSWORD`).
-3. Use the search box to find a movie. Edited movies have an **Edited** badge.
-4. Click **Edit**, change the fields and click **Save**. Errors show next to the field. Genres are typed separated by commas (up to 10).
+The portal is a small web app for editing movies. Open <http://localhost:8080/admin/movies> (use your `API_PORT`). It uses the admin login from `.env` (default `admin` / `admin123`).
 
-The portal can only edit. It cannot create or delete movies. Saving uses the same rules as the API, so an unchanged save sends no push.
+**What you can and cannot do**
+
+| You can | You cannot |
+|---|---|
+| Sign in and sign out | Create a movie |
+| Browse all movies, 20 per page | Delete a movie |
+| Search by title | Change `id`, `backdrop_path`, `vote_count` or `popularity` |
+| Edit title, overview, poster path, release date, rating and genres | Clear the release date (leave it as is) |
+
+**1. Sign in** — `/login`. Any `/admin/...` page sends you here if you are not signed in.
+
+![Sign in page](docs/images/portal-01-login.png)
+
+| Result | What you see |
+|---|---|
+| Correct login | The movie list |
+| Wrong login | `Wrong username or password.` |
+| After signing out | `You have been signed out.` |
+
+![Wrong password message](docs/images/portal-02-login-wrong-password.png)
+
+**2. Browse the list** — `/admin/movies`.
+
+![The movie list with search, poster, rating, genres and the Edited badge](docs/images/portal-07-saved-with-edited-badge.png)
+
+*The list right after a save: the green message on top, and the **Edited** badge on the changed movie.*
+
+- Shows poster, title, year, rating and genres. A movie an admin changed has an **Edited** badge.
+- Shows the total (`1 movie` / `N movies`) and `Page X of Y`. **Previous** and **Next** appear only when there is another page.
+- No matches shows `No movies found.`
+
+![Paging: Previous and Next, and Page 2 of 3](docs/images/portal-09-page-2.png)
+
+**3. Search** — type part of a title and press **Search**. It is not case-sensitive and matches any part of the title. The search text stays in the box while you page through the results. **Clear** shows all movies again.
+
+![Search results for "the", with the Clear button](docs/images/portal-03-search.png)
+
+**4. Open the edit form** — click **Edit** on a row (`/admin/movies/{id}/edit`). The form is filled with the current values.
+
+![The edit form, filled with the current values](docs/images/portal-04-edit-form.png)
+
+| Field | What to enter | Rules and error message |
+|---|---|---|
+| Title | Text | Required: `Title is required`. At most 255 characters: `Title must be at most 255 characters` |
+| Overview | Multi-line text | At most 5000 characters: `Overview must be at most 5000 characters`. Empty it to clear the overview |
+| Poster path | Path such as `/abc.jpg` | At most 255 characters: `Poster path must be at most 255 characters`. Empty it to clear |
+| Release date | Date picker, `yyyy-MM-dd` | A wrong date format is rejected. Leaving it blank keeps the current date |
+| Rating | Number 0 to 10 (step 0.1) | Required: `Rating is required`. Outside 0 to 10: `Rating must be between 0 and 10` |
+| Genres | Names separated by commas | At most 10: `At most 10 genres`. Too long: `Genres text is too long`. Empty it to remove all genres |
+
+Example: a real edit, with a new title, rating and genres filled in:
+
+![Edit form with changed values](docs/images/portal-06-edit-filled.png)
+
+**5. Save** — press **Save**. Possible results:
+
+| What happened | Result |
+|---|---|
+| The content really changed | Back to the list with `Saved "<title>".`. The movie has the **Edited** badge, its `updated_at` changes, and **a push is sent** to the app |
+| Nothing really changed (same values, extra spaces, genres in another order) | Back to the list with the **same** `Saved "<title>".` message. **Nothing is stored and no push is sent**, and no Edited badge is added (see section 4) |
+| A field is invalid | The form opens again with the error message under each wrong field. **Nothing is saved** and no push is sent |
+| The movie no longer exists | Back to the list with `Movie with id <id> not found` |
+| Your session ended | You are sent to the login page |
+
+An invalid save (empty title, rating 11) shows the messages under the fields and saves nothing:
+
+![Validation errors under the fields](docs/images/portal-05-validation-errors.png)
+
+Opening a movie that does not exist goes back to the list with a red message:
+
+![Movie not found message](docs/images/portal-10-movie-not-found.png)
+
+**6. Cancel** — **Cancel** goes back to the list and changes nothing.
+
+**7. Sign out** — **Log out** (top right) ends the session and shows the login page.
+
+![Signed out message on the login page](docs/images/portal-11-signed-out.png)
+
+**Safety:** every form has a hidden CSRF token, so a form sent from another site is rejected (HTTP 403). Only the admin role can open `/admin/...`.
+
+**What happens behind the scenes on Save:** the portal calls the same service as `PATCH /api/movies/{id}`. The values are cleaned (trimmed, repeated spaces removed) and compared with the stored ones. If something differs, the movie is saved, flagged as edited, and the push is sent after the save succeeded.
 
 ---
 
@@ -331,11 +408,90 @@ The app never edits movies. Edits are made in Swagger UI, Postman or the admin p
 
 ---
 
-## 6. Architectural decisions
+## 6. Architecture and decisions
+
+### How the system fits together
+
+```mermaid
+flowchart LR
+    ADMIN["Admin<br/>Swagger UI, Postman, Admin portal"] -->|"edit"| CTRL
+    TMDB[("TMDb API")] -->|"import on startup"| SYNC
+
+    subgraph BACKEND["Spring Boot backend"]
+        CTRL["Controllers<br/>MovieController, AdminMovieController"] --> SVC["MovieService<br/>rules, saving, events"]
+        SVC --> REPO["MovieRepository"] --> DB[("PostgreSQL / H2")]
+        SYNC["TMDb sync + sample data"] --> REPO
+        SVC -. "MovieUpdatedEvent, after the save" .-> PUSH["MovieUpdatedPushNotifier"]
+    end
+
+    PUSH -->|"data message, topic movie-updates"| FCM["Firebase Cloud Messaging"]
+    FCM --> SERVICE
+
+    subgraph APP["Android app"]
+        UI["Screens"] --> VM["ViewModels"] --> UC["Use cases"] --> AREPO["Repository"]
+        AREPO --> ROOM[("Room cache")]
+        AREPO --> RDS["Remote data source<br/>Ktor"]
+        SERVICE["Messaging service"] --> ROOM
+    end
+
+    RDS -->|"GET /api/movies"| CTRL
+```
+
+### What happens when an admin edits a movie
+
+```mermaid
+sequenceDiagram
+    participant A as Admin (Swagger / portal)
+    participant S as MovieService
+    participant D as Database
+    participant N as PushNotifier
+    participant F as Firebase (FCM)
+    participant P as Android app
+    A->>S: edit (PATCH or portal Save)
+    S->>S: clean the values and compare with the stored ones
+    alt nothing really changed
+        S-->>A: OK, nothing saved, no push
+    else content changed
+        S->>D: save, flag as edited, set updated_at
+        D-->>S: committed
+        S-->>A: OK (updated movie)
+        S->>N: MovieUpdatedEvent (after commit)
+        N->>F: data message to topic movie-updates
+        F->>P: message with every movie field
+        P->>P: save to Room if updated_at is newer
+        P->>P: screens refresh from Room
+    end
+```
+
+### Backend layers
+
+| Layer | Package | Job |
+|---|---|---|
+| Controllers | `movie/`, `admin/` | Only HTTP: read the request, call the service, return JSON or a page |
+| Service | `movie/MovieService` | The rules: paging limits, comparing old and new values, saving, announcing a change |
+| Repository | `movie/MovieRepository` | Database access (Spring Data) |
+| Data sources | `tmdb/`, `movie/seed/` | TMDb import and the sample movies |
+| Notification | `notification/` | Builds the push message and sends it after the save |
+| Cross-cutting | `config/`, `common/` | Security, Firebase, API docs, error format, paging envelope |
+
+The API returns DTOs, never database entities.
+
+### Android app layers
+
+| Layer | Job |
+|---|---|
+| Screens (Compose) and ViewModels | Show data from Room. No network code |
+| Use cases | The domain rules. **Unchanged** by this backend |
+| Repository | Decides between Room and the remote data source |
+| Remote data source (Ktor) | `tmdb` flavor talks to TMDb, `custom` flavor talks to this backend |
+| Room | The single source of truth the screens read |
+| Messaging service | Receives the push and writes the movie to Room |
+
+### Decisions
 
 Each decision says what we chose, why, and what it costs.
 
-### Backend
+#### Backend
 
 **Spring Boot with Kotlin.**
 - *Why:* same language as the Android app, and Spring already provides paging, validation, security, the admin web pages and API docs, so there is little custom code.
@@ -384,7 +540,7 @@ Each decision says what we chose, why, and what it costs.
 **Database tables are created automatically (`ddl-auto=update`).**
 - *Why:* simple for this project. *Cost:* no migration history. Flyway migrations would be the next step for production.
 
-### Android app
+#### Android app
 
 - **Two build flavors, `tmdb` and `custom`.** The original TMDb setup keeps working, so anyone can run the app without the backend. Only the data layer differs.
 - **One remote data source interface, one Koin module per flavor.** The domain layer and use cases do not change.
