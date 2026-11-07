@@ -56,7 +56,8 @@ class MovieController(private val service: MovieService) {
     @Operation(
         summary = "Edit a movie",
         description = "Partial update: omitted or null fields stay unchanged. " +
-            "Marks the movie as edited (TMDb sync will not overwrite it) and sends an FCM push to the app.",
+            "Marks the movie as edited (TMDb sync will not overwrite it) and sends an FCM push to the app " +
+            "with the changed field names and the complete updated movie.",
         security = [SecurityRequirement(name = OpenApiConfig.BASIC_AUTH_SCHEME)],
     )
     @ApiResponse(responseCode = "200", description = "The updated movie")

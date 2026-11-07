@@ -142,22 +142,33 @@ Open `/admin/movies` and sign in with the admin login. The list shows poster, ti
 ```
 PATCH or portal save → MovieService (saves, marks edited, publishes MovieUpdatedEvent)
   → after commit: MovieUpdatedPushNotifier → FCM topic "movie-updates"
-  → app: onMessageReceived → re-fetch GET /api/movies/{id} → upsert into Room → UI updates
+  → app: onMessageReceived → upsert the movie from the message into Room (or re-fetch GET /api/movies/{id}) → UI updates
 ```
 
-The push is a **data-only** message (so the app handles it in foreground and background) with string values:
+The push is a **data-only** message (so the app handles it in foreground and background). All values are strings:
 
 ```json
-{ "type": "MOVIE_UPDATED", "movie_id": "550", "title": "Fight Club (Edited)", "updated_at": "2026-11-06T19:10:00Z" }
+{
+  "type": "MOVIE_UPDATED",
+  "movie_id": "550",
+  "title": "Fight Club (Edited)",
+  "updated_at": "2026-11-06T19:10:00Z",
+  "updated_fields": "title,vote_average",
+  "movie": "{\"id\":550,\"title\":\"Fight Club (Edited)\",\"overview\":\"...\",\"poster_path\":\"/pB8B.jpg\",\"release_date\":\"1999-10-15\",\"vote_average\":9.1,\"genres\":[\"Drama\"],\"updated_at\":\"2026-11-06T19:10:00Z\"}"
+}
 ```
 
-It is sent after the database commit, so a rolled-back edit sends nothing. A failed send is logged and never fails the edit. The payload carries only the id, and the app re-fetches the movie, so the server stays the single source of truth.
+- `updated_fields`: comma-separated names of the fields whose value actually changed (`title`, `overview`, `poster_path`, `release_date`, `vote_average`, `genres`). Empty if the save changed nothing.
+- `movie`: the complete updated movie as a JSON string, in the same format as `GET /api/movies/{id}`. The app can parse it with its existing model and write it straight to Room.
+- FCM limits a data message to 4 KB. If the message would be too large (for example a very long overview), `movie` is left out and the app re-fetches `GET /api/movies/{id}`.
+
+It is sent after the database commit, so a rolled-back edit sends nothing. A failed send is logged and never fails the edit.
 
 ### Contract for the Android app
 
 - Build flavor `custom` points at `http://10.0.2.2:<API_PORT>/api/` and allows cleartext HTTP for `10.0.2.2` only.
 - Subscribe on start: `FirebaseMessaging.getInstance().subscribeToTopic("movie-updates")`.
-- Handle `type == MOVIE_UPDATED`: enqueue unique work for `movie_id`, fetch the movie, upsert into Room.
+- Handle `type == MOVIE_UPDATED`: if `movie` is present, parse it and upsert into Room; otherwise enqueue unique work for `movie_id` that fetches the movie and upserts it. `updated_fields` says what changed.
 - Map `ApiError.status` (404, 400, 401, 500) to the app's domain errors.
 - Use a Google Play emulator image or a real device; FCM does not work on emulators without Google Play services.
 

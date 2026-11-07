@@ -55,23 +55,36 @@ class MovieService(
         require(request.title?.isBlank() != true) { "Title must not be blank" }
 
         val movie = repository.findById(id).orElseThrow { MovieNotFoundException(id) }
-        movie.applyEdit(request)
+        val changedFields = movie.applyEdit(request)
         movie.locallyModified = true
         movie.updatedAt = Instant.now()
-        val saved = repository.save(movie)
+        val updatedMovie = repository.save(movie).toDto()
 
-        eventPublisher.publishEvent(MovieUpdatedEvent(saved.id, saved.title, saved.updatedAt))
-        return saved.toDto()
+        eventPublisher.publishEvent(MovieUpdatedEvent(updatedMovie.id, updatedMovie, changedFields))
+        return updatedMovie
     }
 
-    private fun Movie.applyEdit(request: MovieUpdateRequest) {
-        request.title?.let { title = it.trim() }
-        request.overview?.let { overview = it }
-        request.posterPath?.let { posterPath = it }
-        request.releaseDate?.let { releaseDate = it }
-        request.voteAverage?.let { voteAverage = it }
-        request.genres?.let { newGenres -> genres = newGenres.map(String::trim).filter(String::isNotEmpty).toMutableList() }
+    /** Applies the provided fields and returns the ones whose value really changed. */
+    private fun Movie.applyEdit(request: MovieUpdateRequest): List<MovieEditableField> {
+        val changedFields = mutableListOf<MovieEditableField>()
+
+        fun <T> change(field: MovieEditableField, newValue: T?, currentValue: T, apply: (T) -> Unit) {
+            if (newValue != null && newValue != currentValue) {
+                apply(newValue)
+                changedFields += field
+            }
+        }
+
+        change(MovieEditableField.TITLE, request.title?.trim(), title) { title = it }
+        change(MovieEditableField.OVERVIEW, request.overview, overview.orEmpty()) { overview = it }
+        change(MovieEditableField.POSTER_PATH, request.posterPath, posterPath.orEmpty()) { posterPath = it }
+        change(MovieEditableField.RELEASE_DATE, request.releaseDate, releaseDate) { releaseDate = it }
+        change(MovieEditableField.VOTE_AVERAGE, request.voteAverage, voteAverage) { voteAverage = it }
+        change(MovieEditableField.GENRES, request.genres?.cleanedGenres(), genres.toList()) { genres = it.toMutableList() }
+        return changedFields
     }
+
+    private fun List<String>.cleanedGenres() = map(String::trim).filter(String::isNotEmpty)
 
     private fun clampPage(page: Int) = page.coerceAtLeast(1)
 

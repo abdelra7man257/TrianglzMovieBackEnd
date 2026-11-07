@@ -8,7 +8,8 @@ An edit must make every installed app refresh its cache, in the foreground and t
 ## Decision
 - Send to the topic `movie-updates` instead of device tokens, so no token storage or registration endpoint is needed.
 - Send a **data-only** message (no `notification` block) so the app's `onMessageReceived` always runs and decides what to show.
-- The payload carries only `type`, `movie_id`, `title`, `updated_at`; the app re-fetches the movie by id.
+- The payload carries `type`, `movie_id`, `title`, `updated_at`, `updated_fields` (the fields that actually changed) and `movie` (the complete updated movie as the API's JSON), so the app can update its cache without a network call.
+- FCM limits a data message to 4 KB. If the payload would exceed it, `movie` is omitted and the app re-fetches the movie by id.
 - `MovieService` publishes a `MovieUpdatedEvent`; `MovieUpdatedPushNotifier` listens with `@TransactionalEventListener(AFTER_COMMIT)`.
 - A failed send is logged and does not fail the edit. Without credentials the notifier runs in log-only mode.
 - Use the plain JDK HTTP transport for the Firebase SDK. Spring's dependency management upgrades Apache httpclient5, which made the SDK decompress responses twice ("Not in GZIP format").
