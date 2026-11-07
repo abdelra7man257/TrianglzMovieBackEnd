@@ -99,7 +99,37 @@ class MovieServiceTest {
         assertTrue(movie.locallyModified)
         val published = event.captured as MovieUpdatedEvent
         assertEquals(1, published.movieId)
-        assertEquals("Fight Club (Edited)", published.title)
+        assertEquals(listOf(MovieEditableField.TITLE, MovieEditableField.VOTE_AVERAGE), published.updatedFields)
+        assertEquals(dto, published.movie)
+    }
+
+    @Test
+    fun `event lists only fields whose value really changed`() {
+        val movie = movie().apply { overview = "same"; voteAverage = 7.0; genres = mutableListOf("Drama") }
+        val event = slot<Any>()
+        every { repository.findById(1) } returns Optional.of(movie)
+        every { repository.save(movie) } returns movie
+        every { eventPublisher.publishEvent(capture(event)) } returns Unit
+
+        service.updateMovie(
+            1,
+            MovieUpdateRequest(title = "Fight Club", overview = "same", voteAverage = 7.5, genres = listOf("Drama")),
+        )
+
+        assertEquals(listOf(MovieEditableField.VOTE_AVERAGE), (event.captured as MovieUpdatedEvent).updatedFields)
+    }
+
+    @Test
+    fun `null and empty overview are treated as the same value`() {
+        val movie = movie()
+        val event = slot<Any>()
+        every { repository.findById(1) } returns Optional.of(movie)
+        every { repository.save(movie) } returns movie
+        every { eventPublisher.publishEvent(capture(event)) } returns Unit
+
+        service.updateMovie(1, MovieUpdateRequest(title = "Fight Club", overview = ""))
+
+        assertEquals(emptyList(), (event.captured as MovieUpdatedEvent).updatedFields)
     }
 
     @Test

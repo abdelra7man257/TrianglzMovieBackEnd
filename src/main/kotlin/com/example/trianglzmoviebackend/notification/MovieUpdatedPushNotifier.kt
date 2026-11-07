@@ -19,6 +19,7 @@ import org.springframework.transaction.event.TransactionalEventListener
 class MovieUpdatedPushNotifier(
     firebaseMessagingProvider: ObjectProvider<FirebaseMessaging>,
     properties: AppProperties,
+    private val payloadFactory: MovieUpdatePushPayloadFactory,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val firebaseMessaging: FirebaseMessaging? = firebaseMessagingProvider.getIfAvailable()
@@ -26,9 +27,12 @@ class MovieUpdatedPushNotifier(
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun onMovieUpdated(event: MovieUpdatedEvent) {
-        val payload = MovieUpdatePushPayload.from(event)
+        val payload = payloadFactory.create(event)
         if (firebaseMessaging == null) {
-            log.info("FCM log-only mode (no credentials): would send {} to topic '{}'", payload, topic)
+            log.info(
+                "FCM log-only mode (no credentials): would send {} to topic '{}' (updated fields: {})",
+                payload, topic, payload[MovieUpdatePushPayloadFactory.UPDATED_FIELDS_KEY],
+            )
             return
         }
         try {
