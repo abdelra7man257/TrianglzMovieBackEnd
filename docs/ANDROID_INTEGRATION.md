@@ -14,6 +14,31 @@ The app never edits movies. Edits are made in Swagger UI, Postman or the admin p
 
 ---
 
+## Run it locally
+
+1. **Start the backend.** Follow section 1 of the main `README.md` (`docker compose up --build`). Check that `http://localhost:8080/swagger-ui.html` opens (use your `API_PORT` if you changed it).
+2. **Set up Firebase on the backend** so real pushes are sent: put the service-account file in the backend's `secrets/` folder and set `FIREBASE_CREDENTIALS_PATH` (section 2 of the README). Without it the backend only logs the push.
+3. **Open the Android project** and choose the build variant **`customDebug`**.
+4. **Run it on an emulator with Google Play** (or a real phone). The emulator reaches your computer at `http://10.0.2.2:8080/api/`.
+5. The movie list should load from the backend. Steps 1–11 below build this; the last step is a full test.
+
+The **`tmdbDebug`** variant keeps working without the backend.
+
+## API keys and configuration
+
+| What | Where it goes | Notes |
+|---|---|---|
+| Backend URL | `BuildConfig.BASE_URL` in the `custom` flavor (Step 1) | `http://10.0.2.2:<API_PORT>/api/` on the emulator. Keep the trailing `/`. |
+| Allowed HTTP host | `app/src/custom/res/xml/network_security_config.xml` (Step 2) | Only `10.0.2.2`, and only in the `custom` flavor. Add your computer's IP for a real phone. |
+| Firebase config | `app/google-services.json` (Step 6) | Must come from the **same Firebase project** as the backend. **Never commit it.** |
+| Push topic | The name `movie-updates` (Step 7) | Must match the backend's `FCM_TOPIC` exactly. |
+| TMDb API key | Not needed in the `custom` flavor | The backend holds the key. The `tmdb` flavor keeps using the key setup your app already has. |
+| Admin login (`admin` / `admin123`) | Only for testing edits in Swagger UI or Postman | Never put it in the app. The app does not edit movies. |
+
+Keep every key and `google-services.json` out of git.
+
+---
+
 ## What the backend gives you
 
 **Base URL**
@@ -485,6 +510,20 @@ Tests worth writing:
 - `toMovieOrNull`: a full message, a missing optional key, a bad `genres` value, `partial=true`.
 - `upsertIfNewer`: newer row replaces, older one is ignored.
 - `RefreshMovieWorker` with `TestListenableWorkerBuilder`.
+
+## Architectural decisions
+
+Each decision says what we chose and why.
+
+- **Two build flavors, `tmdb` and `custom`.** The original TMDb setup keeps working, so anyone can run the app without the backend. Only the data layer differs.
+- **One `MovieRemoteDataSource` interface, one implementation per flavor.** Each flavor has a Koin module with the same name (`backendModule`) in its own source set, so the shared code never knows which backend it uses. The domain layer and use cases do not change.
+- **Ktor client with `expectSuccess = true` and one error mapper.** Every failed call becomes a domain error (`NotFound`, `Validation`, `Unauthorized`, `Server`, `Network`) in one place, so the UI code stays the same for both flavors. Coroutine cancellation is never turned into an error.
+- **Room is the single source of truth.** The UI reads only from Room. A push writes to Room, so the screens update by themselves with no extra UI code.
+- **The push is a data-only message to a topic.** The app's own code runs in the foreground and in the background, and the app needs no registration with the backend.
+- **The push already contains the movie.** Each field is a key and a value, so the app can update Room without a network call. If the message is too big (`partial=true`) the app fetches the movie instead, through a small WorkManager job. The job is unique per movie id, so repeated pushes replace each other.
+- **Stale-data guard.** A row is overwritten only if the incoming `updated_at` is the same or newer, so a late or repeated push cannot bring back old data.
+- **Cleartext HTTP only for `10.0.2.2`, only in the `custom` flavor.** Local development works, and the release build keeps Android's default HTTPS-only rule.
+- **The messaging service and the worker use `KoinComponent`.** Android creates these classes, not Koin, so they pull their dependencies with `by inject()`, and no extra WorkManager setup is needed.
 
 ## Troubleshooting
 

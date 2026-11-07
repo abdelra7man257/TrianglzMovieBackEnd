@@ -13,9 +13,11 @@ A Kotlin + Spring Boot backend for the movie app. It serves the movies list, pag
 
 ---
 
-## 1. Run it with Docker (recommended)
+## 1. Run it locally
 
-You need Docker. Nothing else.
+Pick one option. Option A needs only Docker. Option B needs Java 17.
+
+### Option A: Docker (recommended)
 
 1. Copy the settings file:
    ```bash
@@ -33,9 +35,9 @@ If port 8080 or 5432 is already used on your machine, set `API_PORT` and/or `DB_
 
 Stop it with `docker compose down`. Your data stays in a Docker volume. Use `docker compose down -v` to delete the data too.
 
-## 2. Run it without Docker
+### Option B: Without Docker
 
-You need Java 17. This uses a file database in `./data` (git-ignored).
+This uses a file database in `./data` (git-ignored).
 
 1. *(Optional)* load your settings:
    ```bash
@@ -51,7 +53,15 @@ You need Java 17. This uses a file database in `./data` (git-ignored).
 
 To start with fresh data, delete the `data` folder.
 
-## 3. Settings
+## 2. API keys and configuration
+
+The backend needs up to three things. All of them are optional for a first run.
+
+| What | Needed for | Where it goes |
+|---|---|---|
+| TMDb API key | Real movies (without it you get 25 sample movies) | `TMDB_API_KEY` in `.env` |
+| Firebase service-account file | Real push notifications (without it the push is only logged) | `secrets/` folder + `FIREBASE_CREDENTIALS_PATH` in `.env` |
+| Admin login | Editing movies and the admin portal | `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `.env` |
 
 All settings are environment variables (put them in `.env`). Nothing secret is committed: `.env`, `secrets/`, `data/` and `google-services.json` are git-ignored.
 
@@ -87,7 +97,7 @@ Without this the backend still works. When you edit a movie it only logs `FCM lo
 
 ---
 
-## 4. Where things are
+## 3. Where things are
 
 Default port 8080 (use your `API_PORT` if you changed it).
 
@@ -99,7 +109,7 @@ Default port 8080 (use your `API_PORT` if you changed it).
 | Health check | <http://localhost:8080/actuator/health> |
 | From the Android emulator | `http://10.0.2.2:8080/api/` |
 
-## 5. API
+## 4. API
 
 | Method | Path | Login needed | What it does |
 |---|---|---|---|
@@ -172,7 +182,7 @@ curl -u admin:admin123 -X PATCH http://localhost:8080/api/movies/550 \
 
 ---
 
-## 6. When is a push sent?
+## 5. When is a push sent?
 
 Only when an edit **really changes the content**. These are treated as *no change*, so nothing is saved and no push is sent:
 
@@ -212,7 +222,7 @@ A key that is missing means the movie has no value for it. For the Android steps
 
 ---
 
-## 7. Admin portal
+## 6. Admin portal
 
 1. Open <http://localhost:8080/admin/movies>. You are sent to the login page.
 2. Sign in with `admin` / `admin123` (or your `ADMIN_USERNAME` / `ADMIN_PASSWORD`).
@@ -222,7 +232,7 @@ A key that is missing means the movie has no value for it. For the Android steps
 
 The portal can only edit. It cannot create or delete movies. Saving uses the same rules as the API, so an unchanged save sends no push.
 
-## 8. Test the whole flow
+## 7. Test the whole flow
 
 1. Start the backend (section 1) with your Firebase file set up.
 2. Run the Android app on an emulator **with Google Play** (or a real device). Make sure it uses `http://10.0.2.2:<API_PORT>/api/`.
@@ -233,11 +243,62 @@ The portal can only edit. It cannot create or delete movies. Saving uses the sam
 7. Send the **same** title again with extra spaces. No new `FCM sent` line appears.
 8. Restart the backend (`docker compose restart api`). The edited movie is still edited.
 
-## 9. Run the tests
+## 8. Run the tests
 
 ```bash
 ./gradlew test
 ```
+
+## 9. Architectural decisions
+
+Each decision says what we chose, why, and what it costs.
+
+**Spring Boot with Kotlin.**
+- *Why:* same language as the Android app, and Spring already provides paging, validation, security, the admin web pages and API docs, so there is little custom code.
+- *Cost:* a heavier runtime than a small framework like Ktor.
+
+**Our own database, filled from TMDb, instead of a pass-through proxy.**
+- *Why:* edits must survive restarts, and search and paging are served from our data. The TMDb id is the primary key, so a re-sync updates the same row.
+- *Cost:* data can be as old as the last sync. When an admin edits a movie it gets an *edited* flag, and later syncs only refresh its popularity and vote count, so edits are never overwritten.
+
+**Sample data when there is no TMDb key (or TMDb fails).**
+- *Why:* a reviewer can run the project with no account. Sample ids start at 9000001 so they never clash with real TMDb ids.
+
+**The TMDb key stays on the server.**
+- *Why:* it is no longer inside the app (APK). The content filters (`include_adult=false`, US certification up to PG-13) are applied in the import.
+- *Safety:* failed TMDb calls are logged without the URL, because the URL contains the key.
+
+**Layers: controller → service → repository, and DTOs instead of database entities.**
+- *Why:* the controller only handles HTTP, the service holds the rules, and the API shape can change without touching the database model. This mirrors the Android app's Clean Architecture.
+
+**One error format for every failure** (`status`, `error`, `message`, `details`, `timestamp`).
+- *Why:* the Android app maps the status to its own domain errors in one place. Unexpected errors return a generic message, and details stay in the server log.
+
+**Two security setups in one app.**
+- *Why:* the API is stateless with HTTP Basic, so a client gets a clean 401 and not a login page. The admin portal uses a login form with a session and CSRF protection, as browsers need. Reading movies is public because the app has no login.
+
+**Push through a topic, as a data-only message.**
+- *Why:* a topic needs no device registration or token storage. A data-only message always reaches the app's code (app open or in the background), so the app decides what to do.
+- *Cost:* every installed app gets every update.
+
+**The push is sent only after the database save succeeds.**
+- *Why:* a rolled-back edit sends nothing, and the push can never arrive before the data is saved. A failed send is logged and never fails the edit. Without Firebase credentials it only logs.
+
+**The push is sent only when the content really changes.**
+- *Why:* extra spaces, a different genre order or sending the same values again would wake every phone for nothing. The service compares cleaned-up old and new values and skips the save and the push if they are the same.
+
+**Every movie field is its own key and value in the push.**
+- *Why:* FCM values must be strings, and flat keys are easy to read on Android without a nested object. A missing key means no value. `updated_fields` tells the app what changed.
+- *Limit:* FCM allows 4 KB per message. If a message is too big, `overview` is dropped and `partial=true` is set, and the app fetches the movie.
+
+**Firebase uses the plain Java HTTP transport.**
+- *Why:* Spring upgrades an Apache HTTP library that made the Firebase SDK read FCM answers twice and fail with "Not in GZIP format".
+
+**The admin portal lives in the same app and only edits.**
+- *Why:* no separate frontend, and it reuses the same service, so the rules and the push are identical to the API. It cannot create or delete movies.
+
+**Database tables are created automatically (`ddl-auto=update`).**
+- *Why:* simple for this project. *Cost:* no migration history. Flyway migrations would be the next step for production.
 
 ## 10. Project layout
 
@@ -265,5 +326,5 @@ How it is layered: controller (HTTP only) → service (rules, saving, events) �
 | `TMDb sync failed ... HTTP 401` | Wrong `TMDB_API_KEY`. The app keeps running with sample data |
 | Emulator cannot reach the API | Use `http://10.0.2.2:<API_PORT>/api/`, not `localhost` |
 | Edit returns 401 | Wrong admin login |
-| Edit returns 200 but no push | The content did not really change (see section 6) |
+| Edit returns 200 but no push | The content did not really change (see section 5) |
 | Push is sent but the phone gets nothing | Emulator without Google Play, app force-stopped, or the app is in a different Firebase project |
