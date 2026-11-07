@@ -210,15 +210,7 @@ The portal is a small web app for editing movies. Open <http://localhost:8080/ad
 
 **1. Sign in** — `/login`. Any `/admin/...` page sends you here if you are not signed in.
 
-```
-+--------------------------------+
-|  Movie Admin                   |
-|  Sign in to edit movies.       |
-|  Username [______________]     |
-|  Password [______________]     |
-|  [ Sign in ]                   |
-+--------------------------------+
-```
+![Sign in page](docs/images/portal-01-login.png)
 
 | Result | What you see |
 |---|---|
@@ -226,44 +218,27 @@ The portal is a small web app for editing movies. Open <http://localhost:8080/ad
 | Wrong login | `Wrong username or password.` |
 | After signing out | `You have been signed out.` |
 
+![Wrong password message](docs/images/portal-02-login-wrong-password.png)
+
 **2. Browse the list** — `/admin/movies`.
 
-```
-+-----------------------------------------------------------+
-|  Movie Admin                                   [ Log out ] |
-|  [ Search by title ______________ ] [Search] [Clear]       |
-|  200 movies                                                |
-|  (poster)  Title            Year  Rating  Genres     [Edit]|
-|  [img]     Fight Club        1999  8.4    Drama, ...  [Edit]|
-|  [img]     Some Movie  [Edited] 2020 7.0  Thriller    [Edit]|
-|            ^ "Edited" badge = changed by an admin          |
-|  [ Previous ]        Page 1 of 10          [ Next ]        |
-+-----------------------------------------------------------+
-```
+![The movie list with search, poster, rating, genres and the Edited badge](docs/images/portal-07-saved-with-edited-badge.png)
+
+*The list right after a save: the green message on top, and the **Edited** badge on the changed movie.*
 
 - Shows poster, title, year, rating and genres. A movie an admin changed has an **Edited** badge.
 - Shows the total (`1 movie` / `N movies`) and `Page X of Y`. **Previous** and **Next** appear only when there is another page.
 - No matches shows `No movies found.`
 
+![Paging: Previous and Next, and Page 2 of 3](docs/images/portal-09-page-2.png)
+
 **3. Search** — type part of a title and press **Search**. It is not case-sensitive and matches any part of the title. The search text stays in the box while you page through the results. **Clear** shows all movies again.
+
+![Search results for "the", with the Clear button](docs/images/portal-03-search.png)
 
 **4. Open the edit form** — click **Edit** on a row (`/admin/movies/{id}/edit`). The form is filled with the current values.
 
-```
-+--------------------------------------------------+
-|  Edit movie #550                                 |
-|  Saving marks the movie as edited and sends a    |
-|  push notification to the app.                   |
-|  Title        [ Fight Club                     ]  |
-|  Overview     [ multi-line text...             ]  |
-|  Poster path  [ /pB8B.jpg                      ]  |
-|  Release date [ 1999-10-15 ]  (date picker)       |
-|  Rating (0-10)[ 8.4 ]                             |
-|  Genres       [ Drama, Thriller                ]  |
-|               Separate with commas, up to 10.     |
-|  [ Save ]  [ Cancel ]                             |
-+--------------------------------------------------+
-```
+![The edit form, filled with the current values](docs/images/portal-04-edit-form.png)
 
 | Field | What to enter | Rules and error message |
 |---|---|---|
@@ -274,19 +249,33 @@ The portal is a small web app for editing movies. Open <http://localhost:8080/ad
 | Rating | Number 0 to 10 (step 0.1) | Required: `Rating is required`. Outside 0 to 10: `Rating must be between 0 and 10` |
 | Genres | Names separated by commas | At most 10: `At most 10 genres`. Too long: `Genres text is too long`. Empty it to remove all genres |
 
+Example: a real edit, with a new title, rating and genres filled in:
+
+![Edit form with changed values](docs/images/portal-06-edit-filled.png)
+
 **5. Save** — press **Save**. Possible results:
 
 | What happened | Result |
 |---|---|
 | The content really changed | Back to the list with `Saved "<title>".`. The movie has the **Edited** badge, its `updated_at` changes, and **a push is sent** to the app |
-| Nothing really changed (same values, extra spaces, genres in another order) | Back to the list with `Saved "<title>".`. **Nothing is stored and no push is sent**, and no Edited badge is added (see section 4) |
+| Nothing really changed (same values, extra spaces, genres in another order) | Back to the list with the **same** `Saved "<title>".` message. **Nothing is stored and no push is sent**, and no Edited badge is added (see section 4) |
 | A field is invalid | The form opens again with the error message under each wrong field. **Nothing is saved** and no push is sent |
 | The movie no longer exists | Back to the list with `Movie with id <id> not found` |
 | Your session ended | You are sent to the login page |
 
+An invalid save (empty title, rating 11) shows the messages under the fields and saves nothing:
+
+![Validation errors under the fields](docs/images/portal-05-validation-errors.png)
+
+Opening a movie that does not exist goes back to the list with a red message:
+
+![Movie not found message](docs/images/portal-10-movie-not-found.png)
+
 **6. Cancel** — **Cancel** goes back to the list and changes nothing.
 
 **7. Sign out** — **Log out** (top right) ends the session and shows the login page.
+
+![Signed out message on the login page](docs/images/portal-11-signed-out.png)
 
 **Safety:** every form has a hidden CSRF token, so a form sent from another site is rejected (HTTP 403). Only the admin role can open `/admin/...`.
 
