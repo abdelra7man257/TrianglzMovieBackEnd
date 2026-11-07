@@ -1,0 +1,36 @@
+### Movie Backend API: run with the IntelliJ HTTP client or the VS Code REST Client.
+### Docker Compose default is port 8080; change baseUrl in http-client.env.json if you set API_PORT.
+
+### List movies (page and size are optional)
+GET {{baseUrl}}/api/movies?page=1&size=20
+
+### Search by title (case-insensitive, partial)
+GET {{baseUrl}}/api/movies/search?query=dark&page=1&size=20
+
+### Movie details
+GET {{baseUrl}}/api/movies/{{movieId}}
+
+### Edit a movie (admin). Sends an FCM push to topic movie-updates.
+PATCH {{baseUrl}}/api/movies/{{movieId}}
+Authorization: Basic {{adminUsername}} {{adminPassword}}
+Content-Type: application/json
+
+{
+  "title": "The Dark Knight (Edited)",
+  "overview": "New synopsis",
+  "vote_average": 9.1,
+  "genres": ["Action", "Crime"]
+}
+
+### Edit without credentials -> 401
+PATCH {{baseUrl}}/api/movies/{{movieId}}
+Content-Type: application/json
+
+{ "title": "x" }
+
+### Invalid rating -> 400
+PATCH {{baseUrl}}/api/movies/{{movieId}}
+Authorization: Basic {{adminUsername}} {{adminPassword}}
+Content-Type: application/json
+
+{ "vote_average": 11 }

@@ -20,12 +20,3 @@ data class MovieDto(
     val genres: List<String>,
     val updatedAt: Instant,
 )
-
-/** TMDb-style paging envelope. */
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy::class)
-data class PagedResponse<T>(
-    val page: Int,
-    val results: List<T>,
-    val totalPages: Int,
-    val totalResults: Long,
-)
