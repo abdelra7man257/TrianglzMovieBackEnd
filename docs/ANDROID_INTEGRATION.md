@@ -2,7 +2,7 @@
 
 Follow these steps to make the Android app use this backend instead of calling TMDb directly, and to update its local cache when a movie is edited.
 
-> The Kotlin code below is a reference written for this backend. Adapt names and packages to your app (Hilt, Retrofit, Room, kotlinx.serialization). It has not been compiled inside your project.
+> The Kotlin code below is a reference written for this backend and for an app that uses **Ktor** (HTTP client), **Koin** (dependency injection), Room and kotlinx.serialization. Adapt names and packages to your app. It has not been compiled inside your project.
 
 **What you will do**
 
@@ -106,20 +106,26 @@ android {
 }
 ```
 
-Add the libraries (skip any you already have):
+Add the libraries (skip any you already have, and keep the versions your project already uses):
 
 ```kotlin
 dependencies {
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-kotlinx-serialization:2.11.0")
+    // Ktor client
+    implementation("io.ktor:ktor-client-core:3.0.1")
+    implementation("io.ktor:ktor-client-okhttp:3.0.1")
+    implementation("io.ktor:ktor-client-content-negotiation:3.0.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
+    // Koin
+    implementation("io.insert-koin:koin-android:4.0.0")
+
+    // Firebase push
     implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-messaging-ktx")
 
+    // Fallback fetch
     implementation("androidx.work:work-runtime-ktx:2.9.1")
-    implementation("androidx.hilt:hilt-work:1.2.0")
-    ksp("androidx.hilt:hilt-compiler:1.2.0")
 }
 ```
 
@@ -158,7 +164,7 @@ Change `com.example.app.fcm.MovieMessagingService` to your real package (see Ste
 
 ## Step 3: Add the models
 
-Use `@SerialName` for every snake_case field. Turn on `ignoreUnknownKeys` so new backend fields never crash the app.
+Use `@SerialName` for every snake_case field. You will turn on `ignoreUnknownKeys` in Step 5 so new backend fields never crash the app.
 
 ```kotlin
 @Serializable
@@ -184,33 +190,38 @@ data class MovieDto(
     @SerialName("updated_at") val updatedAt: String,
 )
 
-val json = Json { ignoreUnknownKeys = true }
 ```
 
-## Step 4: Add the Retrofit API
+## Step 4: Add the API service (Ktor)
+
+This class calls the three endpoints. The client (Step 5) already knows the base URL, so paths are relative.
 
 ```kotlin
-interface CustomMovieApi {
-    @GET("movies")
-    suspend fun getMovies(@Query("page") page: Int, @Query("size") size: Int = 20): MoviePageResponse
+class CustomMovieApi(private val client: HttpClient) {
 
-    @GET("movies/search")
-    suspend fun searchMovies(
-        @Query("query") query: String,
-        @Query("page") page: Int,
-        @Query("size") size: Int = 20,
-    ): MoviePageResponse
+    suspend fun getMovies(page: Int, size: Int = 20): MoviePageResponse =
+        client.get("movies") {
+            parameter("page", page)
+            parameter("size", size)
+        }.body()
 
-    @GET("movies/{id}")
-    suspend fun getMovie(@Path("id") id: Long): MovieDto
+    suspend fun searchMovies(query: String, page: Int, size: Int = 20): MoviePageResponse =
+        client.get("movies/search") {
+            parameter("query", query)
+            parameter("page", page)
+            parameter("size", size)
+        }.body()
+
+    suspend fun getMovie(id: Long): MovieDto =
+        client.get("movies/$id").body()
 }
 ```
 
-Build Retrofit with `BuildConfig.BASE_URL` and `json.asConverterFactory("application/json".toMediaType())`. Set OkHttp timeouts to about 15 seconds.
+## Step 5: Add the data source, error mapping and Koin module
 
-## Step 5: Add the remote data source and error mapping
+Your app should call an interface. Each flavor provides its own implementation, and the domain layer does not change.
 
-Your app should call an interface, and each flavor binds its own implementation (in `src/tmdb/...` and `src/custom/...` Hilt modules). The domain layer does not change.
+**The interface and the backend implementation**
 
 ```kotlin
 interface MovieRemoteDataSource {
@@ -219,7 +230,7 @@ interface MovieRemoteDataSource {
     suspend fun getMovie(id: Long): MovieRemote
 }
 
-class CustomBackendRemoteDataSource @Inject constructor(
+class CustomBackendRemoteDataSource(
     private val api: CustomMovieApi,
 ) : MovieRemoteDataSource {
 
@@ -228,22 +239,68 @@ class CustomBackendRemoteDataSource @Inject constructor(
     override suspend fun getMovie(id: Long) = call { api.getMovie(id).toRemote() }
 
     private suspend fun <T> call(block: suspend () -> T): T =
-        try { block() } catch (e: Exception) { throw e.toDomainError() }
-}
-
-fun Throwable.toDomainError(): DomainError = when (this) {
-    is HttpException -> when (code()) {
-        404 -> DomainError.NotFound
-        400 -> DomainError.Validation
-        401 -> DomainError.Unauthorized
-        else -> DomainError.Server
-    }
-    is IOException -> DomainError.Network
-    else -> DomainError.Unknown
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e                          // never turn a coroutine cancellation into an error
+        } catch (e: Exception) {
+            throw e.toDomainError()
+        }
 }
 ```
 
 When converting a page, set `hasNext = page < totalPages`. Map `genres` straight to the names your UI shows.
+
+**Error mapping.** `DomainError` here is your existing error type, the one your TMDb data source already throws (a sealed class that extends `Exception`). With `expectSuccess = true` (set below), Ktor throws on every non-2xx answer:
+
+```kotlin
+fun Throwable.toDomainError(): DomainError = when (this) {
+    is ClientRequestException -> when (response.status.value) {   // 4xx
+        404 -> DomainError.NotFound
+        400 -> DomainError.Validation
+        401 -> DomainError.Unauthorized
+        else -> DomainError.Unknown
+    }
+    is ServerResponseException -> DomainError.Server              // 5xx
+    is HttpRequestTimeoutException, is IOException -> DomainError.Network
+    else -> DomainError.Unknown
+}
+```
+
+**The Koin module, one per flavor.** Create a file with the **same name and same top-level `backendModule`** in both source sets: `app/src/custom/.../di/BackendModule.kt` and `app/src/tmdb/.../di/BackendModule.kt`. The shared code then just uses `backendModule`, and each flavor compiles its own.
+
+```kotlin
+// app/src/custom/.../di/BackendModule.kt
+val backendModule = module {
+    single { Json { ignoreUnknownKeys = true } }
+
+    single {
+        HttpClient(OkHttp) {
+            expectSuccess = true                                   // throw on non-2xx
+            install(ContentNegotiation) { json(get<Json>()) }
+            install(HttpTimeout) {
+                connectTimeoutMillis = 10_000
+                requestTimeoutMillis = 15_000
+            }
+            defaultRequest { url(BuildConfig.BASE_URL) }           // ends with "/"
+        }
+    }
+
+    single { CustomMovieApi(get()) }
+    single<MovieRemoteDataSource> { CustomBackendRemoteDataSource(get()) }
+}
+```
+
+The `tmdb` flavor's `backendModule` keeps your existing TMDb client and data source.
+
+Start Koin once, in your `Application` class, and load the module:
+
+```kotlin
+startKoin {
+    androidContext(this@App)
+    modules(appModules, backendModule)    // appModules = your existing shared modules
+}
+```
 
 Check: run the `customDebug` build. The list, paging and search should load from the backend.
 
@@ -299,7 +356,7 @@ Every value is a string. A key that is **missing** means the movie has no value 
 ### Turn the message into a movie
 
 ```kotlin
-fun Map<String, String>.toMovieOrNull(): MovieDto? {
+fun Map<String, String>.toMovieOrNull(json: Json): MovieDto? {
     if (this["partial"] == "true") return null           // incomplete: fetch from the API
     val id = this["movie_id"]?.toLongOrNull() ?: return null
     val title = this["title"] ?: return null
@@ -325,17 +382,17 @@ fun Map<String, String>.toMovieOrNull(): MovieDto? {
 ### The service
 
 ```kotlin
-@AndroidEntryPoint
-class MovieMessagingService : FirebaseMessagingService() {
+class MovieMessagingService : FirebaseMessagingService(), KoinComponent {
 
-    @Inject lateinit var movieRepository: MovieRepository   // writes to Room
+    private val movieRepository: MovieRepository by inject()   // writes to Room
+    private val json: Json by inject()
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         if (data["type"] != "MOVIE_UPDATED") return
         val movieId = data["movie_id"]?.toLongOrNull() ?: return
 
-        val movie = data.toMovieOrNull()
+        val movie = data.toMovieOrNull(json)
         if (movie != null) {
             // Already on a background thread, and fast. You have about 20 seconds.
             runBlocking { movieRepository.upsertIfNewer(movie) }
@@ -361,24 +418,26 @@ suspend fun upsertIfNewer(remote: MovieDto) {
 }
 ```
 
-**Fallback worker** — used when the push has `partial=true` or cannot be read:
+**Fallback worker** — it gets its dependencies from Koin through `KoinComponent`, so no extra WorkManager setup is needed. It is used when the push has `partial=true` or cannot be read:
 
 ```kotlin
-@HiltWorker
-class RefreshMovieWorker @AssistedInject constructor(
-    @Assisted context: Context,
-    @Assisted params: WorkerParameters,
-    private val remote: MovieRemoteDataSource,
-    private val movieRepository: MovieRepository,
-) : CoroutineWorker(context, params) {
+class RefreshMovieWorker(
+    context: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(context, params), KoinComponent {
+
+    private val remote: MovieRemoteDataSource by inject()
+    private val movieRepository: MovieRepository by inject()
 
     override suspend fun doWork(): Result {
         val id = inputData.getLong(KEY_MOVIE_ID, -1).takeIf { it > 0 } ?: return Result.failure()
         return try {
             movieRepository.upsertIfNewer(remote.getMovie(id))
             Result.success()
-        } catch (e: IOException) {
-            Result.retry()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: DomainError) {
+            if (e == DomainError.Network) Result.retry() else Result.failure()
         } catch (e: Exception) {
             Result.failure()
         }
@@ -421,8 +480,8 @@ If you use a `RemoteMediator`, keep the backend's order (most popular first) in 
 
 Tests worth writing:
 
-- The data source with MockWebServer: paging, `genres` as names, `null` overview and date.
-- The error mapper: 404, 400, 401, 500 and `IOException`.
+- The data source with Ktor's `MockEngine`: paging, `genres` as names, `null` overview and date.
+- The error mapper: 404, 400, 401, 500 (a `MockEngine` answering with that status), a timeout and `IOException`.
 - `toMovieOrNull`: a full message, a missing optional key, a bad `genres` value, `partial=true`.
 - `upsertIfNewer`: newer row replaces, older one is ignored.
 - `RefreshMovieWorker` with `TestListenableWorkerBuilder`.
