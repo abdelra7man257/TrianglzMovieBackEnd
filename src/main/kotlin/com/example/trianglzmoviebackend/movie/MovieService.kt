@@ -59,39 +59,48 @@ class MovieService(
         require(request.title?.isBlank() != true) { "Title must not be blank" }
 
         val movie = repository.findById(id).orElseThrow { MovieNotFoundException(id) }
-        if (!movie.applyEdit(request)) return movie.toDto()
+        val changedFields = movie.applyEdit(request)
+        if (changedFields.isEmpty()) return movie.toDto()
 
         movie.locallyModified = true
         movie.updatedAt = Instant.now()
         val updatedMovie = repository.save(movie).toDto()
 
-        eventPublisher.publishEvent(MovieUpdatedEvent(updatedMovie.id, updatedMovie.title, updatedMovie.updatedAt))
+        eventPublisher.publishEvent(MovieUpdatedEvent(updatedMovie.id, updatedMovie, changedFields))
         return updatedMovie
     }
 
-    /** Copies the fields whose normalized value differs. Returns true if at least one did. */
-    private fun Movie.applyEdit(request: MovieUpdateRequest): Boolean {
-        var changed = false
+    /** Copies the fields whose normalized value differs and returns which ones they were. */
+    private fun Movie.applyEdit(request: MovieUpdateRequest): List<MovieEditableField> {
+        val changedFields = mutableListOf<MovieEditableField>()
 
         request.title?.normalizedSingleLine()?.let { newTitle ->
-            if (newTitle != title.normalizedSingleLine()) { title = newTitle; changed = true }
+            if (newTitle != title.normalizedSingleLine()) { title = newTitle; changedFields += MovieEditableField.TITLE }
         }
         request.overview?.normalizedMultiLine()?.let { newOverview ->
-            if (newOverview != overview.orEmpty().normalizedMultiLine()) { overview = newOverview; changed = true }
+            if (newOverview != overview.orEmpty().normalizedMultiLine()) {
+                overview = newOverview; changedFields += MovieEditableField.OVERVIEW
+            }
         }
         request.posterPath?.trim()?.let { newPosterPath ->
-            if (newPosterPath != posterPath.orEmpty().trim()) { posterPath = newPosterPath; changed = true }
+            if (newPosterPath != posterPath.orEmpty().trim()) {
+                posterPath = newPosterPath; changedFields += MovieEditableField.POSTER_PATH
+            }
         }
         request.releaseDate?.let { newReleaseDate ->
-            if (newReleaseDate != releaseDate) { releaseDate = newReleaseDate; changed = true }
+            if (newReleaseDate != releaseDate) { releaseDate = newReleaseDate; changedFields += MovieEditableField.RELEASE_DATE }
         }
         request.voteAverage?.let { newVoteAverage ->
-            if (!newVoteAverage.sameRatingAs(voteAverage)) { voteAverage = newVoteAverage; changed = true }
+            if (!newVoteAverage.sameRatingAs(voteAverage)) {
+                voteAverage = newVoteAverage; changedFields += MovieEditableField.VOTE_AVERAGE
+            }
         }
         request.genres?.normalizedGenres()?.let { newGenres ->
-            if (newGenres.toSet() != genres.normalizedGenres().toSet()) { genres = newGenres.toMutableList(); changed = true }
+            if (newGenres.toSet() != genres.normalizedGenres().toSet()) {
+                genres = newGenres.toMutableList(); changedFields += MovieEditableField.GENRES
+            }
         }
-        return changed
+        return changedFields
     }
 
     private fun clampPage(page: Int) = page.coerceAtLeast(1)

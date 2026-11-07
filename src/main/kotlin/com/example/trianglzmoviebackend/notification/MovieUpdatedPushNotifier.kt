@@ -19,6 +19,7 @@ import org.springframework.transaction.event.TransactionalEventListener
 class MovieUpdatedPushNotifier(
     firebaseMessagingProvider: ObjectProvider<FirebaseMessaging>,
     properties: AppProperties,
+    private val payloadFactory: MovieUpdatePushPayloadFactory,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val firebaseMessaging: FirebaseMessaging? = firebaseMessagingProvider.getIfAvailable()
@@ -26,7 +27,7 @@ class MovieUpdatedPushNotifier(
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun onMovieUpdated(event: MovieUpdatedEvent) {
-        val payload = MovieUpdatePushPayload.from(event)
+        val payload = payloadFactory.create(event)
         if (firebaseMessaging == null) {
             log.info("FCM log-only mode (no credentials): would send {} to topic '{}'", payload, topic)
             return
@@ -38,7 +39,11 @@ class MovieUpdatedPushNotifier(
                 .setAndroidConfig(AndroidConfig.builder().setPriority(AndroidConfig.Priority.HIGH).build())
                 .build()
             val messageId = firebaseMessaging.send(message)
-            log.info("FCM sent for movie {} to topic '{}' (id {})", event.movieId, topic, messageId)
+            log.info(
+                "FCM sent for movie {} to topic '{}' (id {}, updated fields: {}, full movie included: {})",
+                event.movieId, topic, messageId, payload[MovieUpdatePushPayloadFactory.UPDATED_FIELDS_KEY],
+                payload.containsKey(MovieUpdatePushPayloadFactory.MOVIE_KEY),
+            )
         } catch (e: Exception) {
             log.error("FCM send failed for movie {}", event.movieId, e)
         }

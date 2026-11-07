@@ -99,7 +99,44 @@ class MovieServiceTest {
         assertTrue(movie.locallyModified)
         val published = event.captured as MovieUpdatedEvent
         assertEquals(1, published.movieId)
-        assertEquals("Fight Club (Edited)", published.title)
+        assertEquals("Fight Club (Edited)", published.movie.title)
+        assertEquals(9.1, published.movie.voteAverage)
+        assertEquals(listOf(MovieEditableField.TITLE, MovieEditableField.VOTE_AVERAGE), published.updatedFields)
+    }
+
+    @Test
+    fun `event lists only the fields whose value really changed`() {
+        val movie = movie().apply { overview = "same"; voteAverage = 7.0; genres = mutableListOf("Drama") }
+        val event = slot<Any>()
+        every { repository.findById(1) } returns Optional.of(movie)
+        every { repository.save(movie) } returns movie
+        every { eventPublisher.publishEvent(capture(event)) } returns Unit
+
+        service.updateMovie(
+            1,
+            MovieUpdateRequest(title = "Fight Club", overview = "same", voteAverage = 7.5, genres = listOf("Drama")),
+        )
+
+        assertEquals(listOf(MovieEditableField.VOTE_AVERAGE), (event.captured as MovieUpdatedEvent).updatedFields)
+    }
+
+    @Test
+    fun `every editable field is reported when all of them change`() {
+        val movie = movie().apply { overview = "a"; posterPath = "/a.jpg"; genres = mutableListOf("Drama") }
+        val event = slot<Any>()
+        every { repository.findById(1) } returns Optional.of(movie)
+        every { repository.save(movie) } returns movie
+        every { eventPublisher.publishEvent(capture(event)) } returns Unit
+
+        service.updateMovie(
+            1,
+            MovieUpdateRequest(
+                title = "New", overview = "b", posterPath = "/b.jpg", releaseDate = java.time.LocalDate.of(2000, 1, 1),
+                voteAverage = 5.0, genres = listOf("Comedy"),
+            ),
+        )
+
+        assertEquals(MovieEditableField.entries, (event.captured as MovieUpdatedEvent).updatedFields)
     }
 
     @Test
